@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import {
+  Geist,
+  Geist_Mono,
+  Covered_By_Your_Grace,
+  Signika,
+} from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -9,6 +14,20 @@ const geistSans = Geist({
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+const grace = Covered_By_Your_Grace({
+  variable: "--font-covered-by-your-grace",
+  weight: "400",
+  style: ["normal"],
+  subsets: ["latin"], // Or other subsets you need
+});
+
+const signika = Signika({
+  variable: "--font-signika",
+  weight: "400",
+  style: ["normal"],
   subsets: ["latin"],
 });
 
@@ -24,8 +43,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <link
+          href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Roboto:wght@300;400;500&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable}  w-full overflow-y-auto antialiased`}
       >
         {children}
       </body>
