@@ -5,14 +5,6 @@ import {
   Covered_By_Your_Grace,
   Signika,
 } from "next/font/google";
-import "./globals.css";
-import {
-  Inter,
-  Geist,
-  Geist_Mono,
-  Covered_By_Your_Grace,
-  Signika,
-} from "next/font/google";
 
 
 const geistSans = Geist({
@@ -51,12 +43,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <head>
-        <link
-          href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Roboto:wght@300;400;500&display=swap"
-          rel="stylesheet"
-        />
-      </head>
       <head>
         <link
           href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Roboto:wght@300;400;500&display=swap"
