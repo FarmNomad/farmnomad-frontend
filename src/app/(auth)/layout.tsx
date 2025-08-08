@@ -1,4 +1,9 @@
 import Image from "next/image";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Authentication Page",
+};
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (

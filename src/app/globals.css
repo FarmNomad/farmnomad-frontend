@@ -1,11 +1,11 @@
 @import "tailwindcss";
 
-@theme inline {
+/* @theme inline {
   --color-background: var(--background-color);
   --color-foreground: var(--foreground-color);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
+} */
 
 @theme inline {
   --color-background: var(--background-color);
