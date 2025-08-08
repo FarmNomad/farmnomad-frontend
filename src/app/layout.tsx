@@ -1,6 +1,13 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import {
+  Inter,
+  Geist,
+  Geist_Mono,
+  Covered_By_Your_Grace,
+  Signika,
+} from "next/font/google";
+
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -10,6 +17,17 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "700"], // Add different font weights if needed
+});
+
+const grace = Covered_By_Your_Grace({
+  weight: "400",
+  style: ["normal"],
+  subsets: ["latin"], // Or other subsets you need
 });
 
 export const metadata: Metadata = {
@@ -24,8 +42,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <link
+          href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Roboto:wght@300;400;500&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased  w-full overflow-y-auto`}
       >
         {children}
       </body>
