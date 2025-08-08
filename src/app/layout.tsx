@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
-import "./globals.css";
 import {
-  Inter,
   Geist,
   Geist_Mono,
   Covered_By_Your_Grace,
@@ -19,15 +17,18 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const inter = Inter({
-  subsets: ["latin"],
-  weight: ["400", "500", "700"], // Add different font weights if needed
-});
-
 const grace = Covered_By_Your_Grace({
+  variable: "--font-covered-by-your-grace",
   weight: "400",
   style: ["normal"],
   subsets: ["latin"], // Or other subsets you need
+});
+
+const signika = Signika({
+  variable: "--font-signika",
+  weight: "400",
+  style: ["normal"],
+  subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
@@ -49,7 +50,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased  w-full overflow-y-auto`}
+        className={`${geistSans.variable} ${geistMono.variable}  w-full overflow-y-auto antialiased`}
       >
         {children}
       </body>
