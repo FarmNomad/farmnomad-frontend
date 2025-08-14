@@ -3,7 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Metadata } from "next";
 
+const metadata: Metadata = {
+  title: "Register an Account Page",
+};
 export default function Page() {
   const router = useRouter();
   const [form, setForm] = useState({

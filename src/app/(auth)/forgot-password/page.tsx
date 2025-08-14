@@ -1,5 +1,9 @@
 import Link from "next/link";
+import { Metadata } from "next";
 
+export const metadata: Metadata = {
+  title: "Forgot Password Page",
+};
 export default function Page (){
     return(
         <div >

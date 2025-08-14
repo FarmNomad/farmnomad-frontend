@@ -1,6 +1,11 @@
 import { Activity, ActivitySquareIcon } from "lucide-react";
 import React from "react";
 
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Activate Page",
+};
 export default function Page() {
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
