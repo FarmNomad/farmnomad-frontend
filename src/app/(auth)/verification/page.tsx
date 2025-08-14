@@ -4,7 +4,7 @@ import { MailCheck, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Metadata } from "next";
 
- export const metadata: Metadata = {
+ const metadata: Metadata = {
     title: "Verification Page",
   };
 
