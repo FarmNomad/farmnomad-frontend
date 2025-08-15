@@ -2,34 +2,57 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-// import { loginUser } from "@/utils/api";
 import { useState } from "react";
-import { Metadata } from "next";
+import { useLoginMutation } from "@/lib/services/authApi";
+import { useDispatch } from "react-redux";
+import { setAuth } from "@/lib/redux/features/authSlice";
+import { AuthUser } from "@/types/authType";
 
-const metadata: Metadata = {
-  title: "Login Page",
-};
-
-export default function Page() {
+export default function LoginPage() {
   const router = useRouter();
+  const dispatch = useDispatch();
+  const [login, { isLoading, error }] = useLoginMutation();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [errorMsg, setErrorMsg] = useState("");
+  const apiError =
+    (error as any)?.data?.message ||
+    (error as any)?.error ||
+    (error ? "Login failed" : "");
 
-  // const handleLogin = async (e: React.FormEvent) => {
-  //   e.preventDefault();
-  //   setErrorMsg("");
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email || !password) return;
 
-  //   try {
-  //     await loginUser({ email, password });
-  //     router.push("/"); // Redirect to homepage
-  //   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  //   } catch (error: any) {
-  //   setErrorMsg(
-  //   error?.response?.data?.error || "Login failed. Please try again."
-  //   );
-  //   }
-  //   };
+    try {
+      const res = await login({ email, password }).unwrap();
+      // res: { token, role, email, isActive, userId? }
+      dispatch(
+        setAuth({
+          user: res as AuthUser,
+          token: res.token,
+        })
+      );
+
+      // Optional: route by role
+      if (!res.isActive && res.role !== "ADMIN") {
+        // if you require activation
+        router.replace("/"); // or /verification
+        return;
+      }
+
+      // No need to check res.ok; errors are handled by the mutation's error handling
+      if (!res || !res.token) {
+        throw new Error("Login failed: Invalid credentials or server error.");
+      }
+
+      // simple route to products (or role dashboards)
+      router.replace("/dashboard/admin");
+    } catch {
+      // handled by apiError
+      console.error("Login failed:", error);
+    }
+  }
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
@@ -37,10 +60,11 @@ export default function Page() {
         Welcome Back 👋
       </h2>
 
-      <form className="space-y-5">
-        {errorMsg && (
-          <div className="text-red-500 text-sm text-center">{errorMsg}</div>
+      <form className="space-y-5" onSubmit={handleLogin}>
+        {apiError && (
+          <div className="text-red-500 text-sm text-center">{apiError}</div>
         )}
+
         <div>
           <label className="block text-sm font-medium">Email</label>
           <input
@@ -50,6 +74,7 @@ export default function Page() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            autoComplete="email"
           />
         </div>
 
@@ -62,6 +87,7 @@ export default function Page() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            autoComplete="current-password"
           />
         </div>
 
@@ -74,8 +100,11 @@ export default function Page() {
           </Link>
         </div>
 
-        <button className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 transition">
-          Login
+        <button
+          className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 transition"
+          disabled={isLoading}
+        >
+          {isLoading ? "Signing in..." : "Login"}
         </button>
 
         <p className="text-sm text-center">

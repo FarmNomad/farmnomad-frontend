@@ -6,6 +6,7 @@ import {
   Signika,
 } from "next/font/google";
 import "./globals.css";
+import Providers from "./providers";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,7 +37,8 @@ export const metadata: Metadata = {
     template: "%s | AgriRoute Website",
     default: "AgriRoute Website",
   },
-  description: "The official AgriRoute Website built by AgriRoute Inc.",
+  description:
+    "The official AgriRoute Website built by AgriRoute Inc. A Rural logistics & surplus redistribution platform.",
   metadataBase: new URL("https://agriroute.com"),
 };
 
@@ -56,7 +58,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable}  w-full overflow-y-auto antialiased`}
       >
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
