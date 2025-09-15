@@ -1,5 +1,19 @@
 import { baseApi } from "../baseApi";
 import type { User } from "../../types/api";
+export type Me = {
+  id: number;
+  fullName: string;
+  email: string;
+  role: "ADMIN" | "FARMER" | "DRIVER" | "FOODBANK" | "CUSTOMER";
+  phoneNumber?: string | null;
+  address?: string | null;
+  avatarUrl?: string | null;
+  // add any other fields your backend returns...
+};
+
+export type UpdateMeDto = Partial<
+  Pick<Me, "fullName" | "phoneNumber" | "address" | "avatarUrl">
+>;
 
 export const userApi = baseApi.injectEndpoints({
   endpoints: (b) => ({
@@ -19,6 +33,25 @@ export const userApi = baseApi.injectEndpoints({
       query: (id) => ({ url: `/users/${id}`, method: "DELETE" }),
       invalidatesTags: ["User"],
     }),
+    getMe: b.query<Me, void>({
+      query: () => ({ url: "/users/me" }),
+      providesTags: ["User"],
+    }),
+    updateMe: b.mutation<Me, UpdateMeDto>({
+      query: (body) => ({
+        url: "/users/me",
+        method: "PATCH", // or "PUT" if your backend requires
+        body,
+      }),
+      invalidatesTags: ["User"],
+      async onQueryStarted(_body, { dispatch, queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+          // optional: if you mirror user in auth slice, update it here
+          // dispatch(setUser(data))
+        } catch {}
+      },
+    }),
   }),
 });
 
@@ -27,4 +60,6 @@ export const {
   useGetUserQuery,
   useUpdateUserMutation,
   useDeleteUserMutation,
+  useGetMeQuery,
+  useUpdateMeMutation,
 } = userApi;
