@@ -1,49 +1,43 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Metadata } from "next";
 
-const metadata: Metadata = {
-  title: "Register an Account Page",
-};
-export default function Page() {
+export default function RegisterPage() {
   const router = useRouter();
+
   const [form, setForm] = useState({
     fullName: "",
     email: "",
     password: "",
     role: "",
-    street: "",
-    city: "",
-    state: "",
-    postcode: "",
     phoneNumber: "",
+    address: "",
+    postcode: "",
   });
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-  };
-  // const handleSubmit = async (e: React.FormEvent) => {
-  // e.preventDefault();
-  // try {
-  // await registerUser(form);
-  // alert("Registration successful! You can now log in.");
-  // router.push("/login");
-  // } catch (err: any) {
-  // alert("Registration failed: " + err.message);
-  // }
-  // };
+  ) => setForm({ ...form, [e.target.name]: e.target.value });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!form.role) {
+      alert("Please select a role.");
+      return;
+    }
+
+  }
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
       <h2 className="text-2xl font-bold text-center text-green-700 mb-6">
         Create Account 🌱
       </h2>
-      <form className="space-y-2">
-        {/* Full Name */}
+
+      <form className="space-y-3" onSubmit={handleSubmit}>
         <div>
           <label className="block text-sm font-medium">Full Name</label>
           <input
@@ -53,11 +47,10 @@ export default function Page() {
             required
             type="text"
             className="w-full border rounded p-2 mt-1"
-            placeholder="Jane"
+            placeholder="Jane Doe"
           />
         </div>
 
-        {/* Email */}
         <div>
           <label className="block text-sm font-medium">Email</label>
           <input
@@ -71,7 +64,6 @@ export default function Page() {
           />
         </div>
 
-        {/* Password */}
         <div>
           <label className="block text-sm font-medium">Password</label>
           <input
@@ -85,7 +77,6 @@ export default function Page() {
           />
         </div>
 
-        {/* Phone Number */}
         <div>
           <label className="block text-sm font-medium">Phone Number</label>
           <input
@@ -94,11 +85,10 @@ export default function Page() {
             onChange={handleChange}
             type="text"
             className="w-full border rounded p-2 mt-1"
-            placeholder="+1234567890"
+            placeholder="+44 7xxx xxxxxx"
           />
         </div>
 
-        {/* Role */}
         <div>
           <label className="block text-sm font-medium">Role</label>
           <select
@@ -111,24 +101,24 @@ export default function Page() {
             <option value="">Select Role</option>
             <option value="CUSTOMER">Customer</option>
             <option value="FARMER">Farmer</option>
-            <option value="DELIVERYMAN">Delivery Man</option>
+            <option value="DRIVER">Driver</option>
+            <option value="FOODBANK">Food Bank</option>
+            {/* Admin usually shouldn’t self-register */}
           </select>
         </div>
 
-        {/* Address */}
         <div>
           <label className="block text-sm font-medium">Address</label>
           <input
             name="address"
-            value={form.street}
+            value={form.address}
             onChange={handleChange}
             type="text"
             className="w-full border rounded p-2 mt-1"
-            placeholder="123 Main St"
+            placeholder="e.g., 12 Orchard Lane, Cumbria"
           />
         </div>
 
-        {/* Postcode */}
         <div>
           <label className="block text-sm font-medium">Postcode</label>
           <input
@@ -137,19 +127,18 @@ export default function Page() {
             onChange={handleChange}
             type="text"
             className="w-full border rounded p-2 mt-1"
-            placeholder="12345"
+            placeholder="e.g., CA1 2AB"
           />
         </div>
 
-        {/* Button */}
-        <button
+        {/* <button
           type="submit"
+          disabled={isLoading}
           className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 transition"
         >
-          Sign Up
-        </button>
+          {isLoading ? "Creating..." : "Sign Up"}
+        </button> */}
 
-        {/* Footer Link */}
         <p className="text-sm text-center">
           Already have an account?{" "}
           <Link href="/login" className="text-green-700 hover:underline">

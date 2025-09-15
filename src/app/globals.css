@@ -15,6 +15,7 @@
   --lightGreen: "#74C69D";
   --beige: "#F0E5CF";
   --accent: "#E76F51";
+  --light-accent: `#FFC107`;
   --darkText: "#2B2D42";
   --lightBg: "#FAFAFA";
   --font-sans: var(--font-geist-sans);
@@ -62,19 +63,19 @@ body {
   font-family: "Signika";
 }
 
-@media (prefers-color-scheme: dark) {
+/* @media (prefers-color-scheme: dark) {
   :root {
     --background-color: #171717;
     --foreground-color: #f4f7fc;
   }
-}
+} */
 a {
-  color: var(--primary-color);
+  color: auto;
   text-decoration: none;
 }
 
 a:hover {
-  color: var(--secondary-color);
+  color: var(--accent-color);
 }
 
 .button {
