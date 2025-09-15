@@ -61,6 +61,7 @@ jobs:
           #
           # You may remove this line if you want to manage the configuration yourself.
           static_site_generator: next
+          token: ${{secrets.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}}
           enablement: true
       - name: Restore cache
         uses: actions/cache@v4
