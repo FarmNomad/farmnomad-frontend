@@ -4,11 +4,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useRegisterMutation } from "@/lib/services/authApi";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [register, { isLoading, error }] = useRegisterMutation();
 
   const [form, setForm] = useState({
     fullName: "",
@@ -32,30 +30,7 @@ export default function RegisterPage() {
       return;
     }
 
-    try {
-      await register({
-        fullName: form.fullName,
-        email: form.email,
-        password: form.password,
-        phoneNumber: form.phoneNumber || undefined,
-        address: form.address || undefined,
-        postcode: form.postcode || undefined,
-        role: form.role as any, // one of CUSTOMER|FARMER|DRIVER|FOODBANK|ADMIN
-      }).unwrap();
-
-      // Option: if your backend sends activation email, route to /verification
-      router.push("/login");
-    } catch {
-      // handled by `error`
-    }
-  };
-
-  // Extract a readable error message if present
-  const apiError =
-    (error as any)?.data?.message ||
-    (error as any)?.error ||
-    (error ? "Registration failed" : "");
-
+  }
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
       <h2 className="text-2xl font-bold text-center text-green-700 mb-6">
@@ -156,17 +131,13 @@ export default function RegisterPage() {
           />
         </div>
 
-        <button
+        {/* <button
           type="submit"
           disabled={isLoading}
           className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 transition"
         >
           {isLoading ? "Creating..." : "Sign Up"}
-        </button>
-
-        {apiError ? (
-          <p className="text-red-600 text-sm text-center">{apiError}</p>
-        ) : null}
+        </button> */}
 
         <p className="text-sm text-center">
           Already have an account?{" "}

@@ -1,56 +1,57 @@
+// src/app/(auth)/login/page.tsx
 "use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useLoginMutation } from "@/lib/services/authApi";
-import { useDispatch } from "react-redux";
-import { setAuth } from "@/lib/redux/features/authSlice";
-import { AuthUser } from "@/types/authType";
+
+import { useAppDispatch } from "@/lib/redux/store";
+import { setToken, setUser } from "@/lib/redux/slices/auth.slice";
+import {
+  useLoginMutation,
+  useMeQuery,
+  useLazyMeQuery,
+} from "@/lib/redux/services/auth.api";
+import { routeAfterLogin } from "@/lib/utils/routeAfterLogin";
 
 export default function LoginPage() {
   const router = useRouter();
-  const dispatch = useDispatch();
-  const [login, { isLoading, error }] = useLoginMutation();
+  const dispatch = useAppDispatch();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const apiError =
-    (error as any)?.data?.message ||
-    (error as any)?.error ||
-    (error ? "Login failed" : "");
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const [login, { isLoading }] = useLoginMutation();
+  const [fetchMe] = useLazyMeQuery();
+  // const { refetch: fetchMe } = useMeQuery(undefined, { skip: true });
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    if (!email || !password) return;
+    setFormError(null);
+
+    if (!email || !password) {
+      setFormError("Please enter your email and password.");
+      return;
+    }
 
     try {
+      // 1) Login → get JWT
       const res = await login({ email, password }).unwrap();
-      // res: { token, role, email, isActive, userId? }
-      dispatch(
-        setAuth({
-          user: res as AuthUser,
-          token: res.token,
-        })
-      );
-
-      // Optional: route by role
-      if (!res.isActive && res.role !== "ADMIN") {
-        // if you require activation
-        router.replace("/"); // or /verification
-        return;
-      }
-
-      // No need to check res.ok; errors are handled by the mutation's error handling
-      if (!res || !res.token) {
-        throw new Error("Login failed: Invalid credentials or server error.");
-      }
-
-      // simple route to products (or role dashboards)
-      router.replace("/dashboard/admin");
-    } catch {
-      // handled by apiError
-      console.error("Login failed:", error);
+      dispatch(setToken(res.token));
+      // console.log("Logged in, token set:", res.token);
+      // 2) Fetch current user (/users/me) to know the role
+      const me = await fetchMe().unwrap();
+      dispatch(setUser(me));
+      console.log("Fetched current user, user set:", me);
+      // 3) Route by role (admins/farmers/drivers/foodbanks get dashboards; customers go to /products)
+      router.replace(routeAfterLogin(me?.role));
+      // console.log("Routed to appropriate area for role:", me?.role);
+    } catch (err) {
+      setFormError("Invalid credentials or server error. Please try again.");
+      // Optional: clear token if partial state
+      dispatch(setToken(null));
+      dispatch(setUser(null));
     }
   }
 
@@ -61,10 +62,6 @@ export default function LoginPage() {
       </h2>
 
       <form className="space-y-5" onSubmit={handleLogin}>
-        {apiError && (
-          <div className="text-red-500 text-sm text-center">{apiError}</div>
-        )}
-
         <div>
           <label className="block text-sm font-medium">Email</label>
           <input
@@ -91,6 +88,20 @@ export default function LoginPage() {
           />
         </div>
 
+        {formError && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">
+            {formError}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 transition disabled:opacity-60"
+        >
+          {isLoading ? "Signing in..." : "Login"}
+        </button>
+
         <div className="flex justify-end text-sm">
           <Link
             href="/forgot-password"
@@ -99,13 +110,6 @@ export default function LoginPage() {
             Forgot password?
           </Link>
         </div>
-
-        <button
-          className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 transition"
-          disabled={isLoading}
-        >
-          {isLoading ? "Signing in..." : "Login"}
-        </button>
 
         <p className="text-sm text-center">
           Don&apos;t have an account?{" "}
