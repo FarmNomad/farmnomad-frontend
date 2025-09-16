@@ -16,6 +16,6 @@ const rawBaseQuery = fetchBaseQuery({
 export const baseApi = createApi({
   reducerPath: "agrirouteApi",
   baseQuery: rawBaseQuery,
-  tagTypes: ["User", "Product", "Cart", "Order", "Donation"],
+  tagTypes: ["User", "Product", "Cart", "Order", "Donation", "Farmer", "FoodBank", "Me"],
   endpoints: () => ({}),
 });
