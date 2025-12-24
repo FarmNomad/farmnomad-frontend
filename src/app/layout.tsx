@@ -40,6 +40,13 @@ export const metadata: Metadata = {
   description:
     "The official AgriRoute Website built by AgriRoute Inc. A Rural logistics & surplus redistribution platform.",
   metadataBase: new URL("https://agriroute.com"),
+  manifest: "/manifest.webmanifest",
+  themeColor: "#ffffff",
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "MyApp" },
+};
+
+export const viewport = {
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({

@@ -154,10 +154,10 @@ export default function FoodbankDashboard() {
                 </table>
               </div>
             )}
-            <p className="mt-2 text-xs text-gray-500">
+            {/* <p className="mt-2 text-xs text-gray-500">
               Claim sends <code>{`{ productId, quantity }`}</code> in the
               request body, as per your Postman definition.
-            </p>
+            </p> */}
           </section>
         </div>
       </section>
