@@ -20,11 +20,14 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: "http",
-        // hostname: "192.168.4.145",
         hostname: "farmnomad-backend.onrender.com",
-        // port: "9000",
-        // pathname: "/**",
         pathname: "/uploads/**",
+      },
+      {
+        protocol: "http",
+        hostname: "192.168.4.145",
+        port: "9000",
+        pathname: "/**",
       },
       {
         protocol: "http",
