@@ -133,7 +133,7 @@ export default function Navbar() {
     >
       {/* Logo */}
       <Link href="/" className="text-xl font-bold text-green-800">
-        AgriRoute
+        FarmNomad
       </Link>
 
       {/* Middle links */}

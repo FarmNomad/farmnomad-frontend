@@ -1,6 +1,6 @@
 {
-  "name": "AgriRoute",
-  "short_name": "AgriRoute",
+  "name": "FarmNomad",
+  "short_name": "FarmNomad",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

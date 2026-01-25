@@ -24,7 +24,7 @@ export default function Footer() {
           <div className="flex items-center lg:gap-2">
             <span className="bg-white p-1 lg:p-2 rounded-full shadow">✉️</span>
             <span className="text-[#333] font-medium">
-              noreply@agriroute.com
+              noreply@farmnomad.com
             </span>
           </div>
         </div>
@@ -35,10 +35,10 @@ export default function Footer() {
         {/* Logo and description */}
         <div className="space-y-4 lg:flex-1">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-2xl text-[#3c4f3d]">AgriRoute</span>
+            <span className="font-bold text-2xl text-[#3c4f3d]">FarmNomad</span>
           </div>
           <p className="text-sm text-[#666] text-start">
-            AgriRoute is a platform that connects farmers directly with
+            FarmNomad is a platform that connects farmers directly with
             customers, eliminating middlemen. Farmers can sell produce, shop for
             discounted farm machinery, and access weather forecasts to optimize
             farming decisions. 🚜🌾
@@ -127,7 +127,7 @@ export default function Footer() {
             <Link href="#">Privacy Policy</Link>
           </div>
           <div>
-            Copyright © 2024 <span className="font-semibold">AgriRoute</span>.
+            Copyright © 2024 <span className="font-semibold">FarmNomad</span>.
             All Rights Reserved.
           </div>
         </div>

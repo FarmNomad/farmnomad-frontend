@@ -2,12 +2,7 @@ import Image from "next/image";
 import { Metadata } from "next";
 import ScrollingMarquee from "@/components/forms/Marquees";
 
-import {
-  Calendar,
-  User,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
+import { Calendar, User, ChevronLeft, ChevronRight } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Home Page",
@@ -71,7 +66,7 @@ export default function Page() {
       >
         <div className="bg-black/40 absolute inset-0 z-0" />
         <div className="container lg:w-[40%] relative px-12 text-white">
-          <h5 className="text-lg mb-2 uppercase">Welcome to AgriRoute</h5>
+          <h5 className="text-lg mb-2 uppercase">Welcome to FarmNomad</h5>
           <h1 className="text-[5rem] grace-font font leading-tight mb-4 relative">
             Agriculture <span className="text-[#EEC044]">&</span> <br />
             Eco Farming

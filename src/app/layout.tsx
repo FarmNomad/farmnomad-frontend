@@ -34,12 +34,12 @@ const signika = Signika({
 
 export const metadata: Metadata = {
   title: {
-    template: "%s | AgriRoute Website",
-    default: "AgriRoute Website",
+    template: "%s | FarmNomad Website",
+    default: "FarmNomad Website",
   },
   description:
-    "The official AgriRoute Website built by AgriRoute Inc. A Rural logistics & surplus redistribution platform.",
-  metadataBase: new URL("https://agriroute.com"),
+    "The official FarmNomad Website built by FarmNomad Inc. A Rural logistics & surplus redistribution platform.",
+  metadataBase: new URL("https://farmnomad.com"),
   manifest: "/manifest.webmanifest",
   themeColor: "#ffffff",
   appleWebApp: { capable: true, statusBarStyle: "default", title: "MyApp" },

@@ -1,16 +1,16 @@
-import React from 'react';
+import React from "react";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Blog Page",
 };
-export default function Page () {
+export default function Page() {
   return (
     <div className="container mx-auto p-8">
       <h1 className="text-4xl font-bold text-primary mb-6">Our Blog</h1>
       <p className="text-lg text-darkText mb-6">
         Stay updated with the latest news, tips, and insights on farming, fresh
-        produce, and everything related to agro-business. Here at AgriRoute, we
+        produce, and everything related to agro-business. Here at FarmNomad, we
         believe in sharing valuable knowledge to help farmers and customers
         succeed.
       </p>
@@ -88,4 +88,4 @@ export default function Page () {
       </div>
     </div>
   );
-};
+}
