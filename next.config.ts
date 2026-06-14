@@ -23,6 +23,10 @@ const nextConfig: NextConfig = {
         hostname: "farmnomad-backend.onrender.com",
         pathname: "/uploads/**",
       },
+            {
+        protocol: 'https',
+        hostname: 'res.cloudinary.com',
+      },
       {
         protocol: "http",
         hostname: "192.168.4.145",
