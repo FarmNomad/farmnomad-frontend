@@ -17,16 +17,7 @@ const nextConfig: NextConfig = {
   //   ignoreDuringBuilds: true,
   // },
   cacheComponents: true,
-  turbopack: {
-    rules: {
-      "*.css": {
-        loaders: ["@tailwindcss/turbopack"],
-        as: "*.css",
-      },
-    },
-  },
-  webpack: (config) => config,
-  images: {
+    images: {
     remotePatterns: [
       {
         protocol: "http",
@@ -51,15 +42,15 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  async redirects() {
-    return [
-      {
-        source: "/",
-        destination: "/home",
-        permanent: true,
-      },
-    ];
-  },
+  // async redirects() {
+  //   return [
+  //     {
+  //       source: "/",
+  //       destination: "/h",
+  //       permanent: true,
+  //     },
+  //   ];
+  // },
 };
 
 export default withPWA(nextConfig);

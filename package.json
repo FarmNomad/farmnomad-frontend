@@ -1,35 +1,44 @@
 {
-  "name": "farmnomad-frontend",
+  "name": "farmnomad-web",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3000",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint",
+    "api:types": "openapi-typescript https://farmnomad-backend.onrender.com/v3/api-docs -o src/lib/types/api.generated.ts",
+    "api:types:local": "openapi-typescript http://localhost:9000/v3/api-docs -o src/lib/types/api.generated.ts"
   },
   "dependencies": {
     "@ducanh2912/next-pwa": "^10.2.9",
-    "@reduxjs/toolkit": "^2.8.2",
-    "@stripe/stripe-js": "^7.8.0",
-    "js-cookie": "^3.0.5",
-    "lucide-react": "^0.536.0",
-    "next": "^16.1.1",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3",
-    "react-redux": "^9.2.0"
+    "@fontsource/geist-mono": "^5.3.0",
+    "@fontsource/outfit": "^5.3.0",
+    "@phosphor-icons/react": "^2.1.10",
+    "@reduxjs/toolkit": "^2.14.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
+    "lucide-react": "^1.73.0",
+    "motion": "^14.12.0",
+    "next": "16.4.6",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-redux": "^9.3.1",
+    "sonner": "^2.0.8",
+    "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4",
-    "@types/js-cookie": "^3.0.6",
+    "@tailwindcss/postcss": "^4.3.5",
+    "@tailwindcss/turbopack": "4.3.3",
     "@types/node": "^20",
-    "@types/react": "^19.1.9",
+    "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "^16.1.1",
-    "prettier": "^3.0.0-alpha.6",
-    "tailwindcss": "^4",
+    "eslint-config-next": "16.4.6",
+    "openapi-typescript": "^7.13.0",
+    "postcss": "^8.5.33",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5"
   }
 }

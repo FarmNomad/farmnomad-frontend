@@ -1,72 +1,34 @@
-import type { Metadata } from "next";
-import {
-  Geist,
-  Geist_Mono,
-  Covered_By_Your_Grace,
-  Signika,
-} from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { outfit, mono } from "./fonts";
 import "./globals.css";
-import Providers from "./providers";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-const grace = Covered_By_Your_Grace({
-  variable: "--font-covered-by-your-grace",
-  weight: "400",
-  style: ["normal"],
-  subsets: ["latin"], // Or other subsets you need
-});
-
-const signika = Signika({
-  variable: "--font-signika",
-  weight: "400",
-  style: ["normal"],
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
-  title: {
-    template: "%s | FarmNomad Website",
-    default: "FarmNomad Website",
-  },
+  title: "FarmNomad | Food straight from UK farms",
   description:
-    "The official FarmNomad Website built by FarmNomad Inc. A Rural logistics & surplus redistribution platform.",
-  metadataBase: new URL("https://farmnomad.com"),
-  manifest: "/manifest.webmanifest",
-  themeColor: "#ffffff",
-  appleWebApp: { capable: true, statusBarStyle: "default", title: "MyApp" },
+    "FarmNomad connects UK farmers with customers, kitchens and community food groups, with delivery built in. List once, sell more, waste less.",
+  openGraph: {
+    title: "FarmNomad | Food straight from UK farms",
+    description: "List once, sell more, waste less. A marketplace and delivery network for UK growers.",
+    images: ["/images/hero.webp"],
+    locale: "en_GB",
+    type: "website",
+  },
 };
 
-export const viewport = {
-  themeColor: "#ffffff",
+export const viewport: Viewport = {
+  themeColor: "#10251B",
+  viewportFit: "cover",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en-GB" className={`${outfit.variable} ${mono.variable}`} suppressHydrationWarning>
       <head>
-        <link
-          href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Roboto:wght@300;400;500&display=swap"
-          rel="stylesheet"
-        />
+        <link rel="preconnect" href="https://api.fontshare.com" crossOrigin="anonymous" />
+        <link rel="preconnect" href="https://cdn.fontshare.com" crossOrigin="anonymous" />
+        <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=general-sans@200,300,400,500,600,700&display=swap" />
       </head>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable}  w-full overflow-y-auto antialiased`}
-      >
-        <Providers>{children}</Providers>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
