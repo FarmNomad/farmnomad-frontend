@@ -114,7 +114,15 @@ export default function FarmerDashboard() {
               ))}
             </div>
           </div>
-          <div className="mt-6">{rev ? <RevenueChart data={rev.cur} /> : <Skeleton className="h-[220px] w-full" />}</div>
+          <div className="mt-6">
+            {!rev ? (
+              <Skeleton className="h-[220px] w-full" />
+            ) : rev.cur.length ? (
+              <RevenueChart data={rev.cur} />
+            ) : (
+              <p className="grid h-[220px] place-items-center rounded-xl text-center text-app-faint shadow-[inset_0_0_0_1px_var(--a-line)]">No sales to show yet.</p>
+            )}
+          </div>
         </section>
 
         <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">

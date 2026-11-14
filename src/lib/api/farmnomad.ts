@@ -22,6 +22,7 @@ import type {
   Organisation,
   Product,
   ProductInput,
+  ProductWrite,
   RegisterInput,
   Surplus,
   User,
@@ -37,8 +38,27 @@ import type {
  */
 export const LIVE_API = process.env.NEXT_PUBLIC_USE_MOCKS === "false";
 
-// Phase 1: auth and the signed-in user.
-const LIVE_ROUTES: RegExp[] = [/^\/auth\//, /^\/users\/me$/];
+// A route is a method ("*" for any) and a path. Listing the method keeps a phase to exactly what it
+// integrated: the farmer's own products are live, while the marketplace list (GET /products) stays
+// on sample data until the customer side is done.
+const LIVE_ROUTES: [method: string, path: RegExp][] = [
+  // Phase 1: auth and the signed-in user.
+  ["*", /^\/auth\//],
+  ["GET", /^\/users\/me$/],
+  // Phase 2: the farmer's products.
+  ["GET", /^\/products\/my$/],
+  ["POST", /^\/products$/],
+  ["PUT", /^\/products\/\d+$/],
+  ["DELETE", /^\/products\/\d+$/],
+];
+
+// Lists the backend has no endpoint for yet. On the real API these come back empty, so a real
+// account never sees sample figures as if they were its own. Move a route to LIVE_ROUTES (with its
+// real path) once the backend provides it.
+const NO_BACKEND_YET: [method: string, path: RegExp][] = [
+  ["GET", /^\/orders\/my\/farmer$/], // a farmer's incoming orders
+  ["GET", /^\/analytics\/farmer\/revenue$/], // daily revenue for the dashboard chart
+];
 
 const mockBaseQuery: BaseQueryFn<
   string | FetchArgs,
@@ -60,8 +80,37 @@ const mockBaseQuery: BaseQueryFn<
 
 const baseQuery: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> = (args, baseApi, extra) => {
   const path = (typeof args === "string" ? args : args.url).split("?")[0];
-  return LIVE_API && LIVE_ROUTES.some((r) => r.test(path)) ? liveBaseQuery(args, baseApi, extra) : mockBaseQuery(args, baseApi, extra);
+  const method = (typeof args === "string" ? "GET" : (args.method ?? "GET")).toUpperCase();
+  const hit = (routes: [string, RegExp][]) => routes.some(([m, r]) => (m === "*" || m === method) && r.test(path));
+  if (LIVE_API && hit(NO_BACKEND_YET)) return { data: [] };
+  return LIVE_API && hit(LIVE_ROUTES) ? liveBaseQuery(args, baseApi, extra) : mockBaseQuery(args, baseApi, extra);
 };
+
+/**
+ * Products are the only multipart resource. On the real API the body is form data: the text
+ * fields, `tags` repeated once per tag, `coverImage` as one file and `images` as files.
+ * No Content-Type is set here; the browser adds it with the multipart boundary.
+ * Photos already on the server are not re-sent (the API takes files, not URLs).
+ * On sample data the body stays JSON and the picked files are left out.
+ */
+function productBody({ coverImage, images, ...fields }: Partial<ProductWrite>): FormData | Partial<ProductInput> {
+  if (!LIVE_API) return fields;
+  const fd = new FormData();
+  const text = (k: string, v: string | number | undefined | null) => {
+    if (v !== undefined && v !== null && v !== "") fd.append(k, String(v));
+  };
+  text("name", fields.name);
+  text("description", fields.description);
+  text("price", fields.price);
+  text("quantityAvailable", fields.quantityAvailable); // not "quantity"
+  text("category", fields.category);
+  text("bestBeforeDate", fields.bestBeforeDate);
+  text("pickupAddress", fields.pickupAddress);
+  fields.tags?.forEach((t) => fd.append("tags", t));
+  if (coverImage) fd.append("coverImage", coverImage);
+  images?.forEach((f) => fd.append("images", f));
+  return fd;
+}
 
 export const api = createApi({
   reducerPath: "api",
@@ -93,21 +142,21 @@ export const api = createApi({
       query: () => "/products/my",
       providesTags: ["Product"],
     }),
-    createProduct: b.mutation<Product, ProductInput>({
-      // The real endpoint takes multipart/form-data; the form layer builds FormData when mocks are off.
-      query: (body) => ({ url: "/products", method: "POST", body }),
+    createProduct: b.mutation<Product, ProductWrite>({
+      query: (input) => ({ url: "/products", method: "POST", body: productBody(input) }),
       invalidatesTags: ["Product"],
     }),
-    updateProduct: b.mutation<Product, { id: number } & Partial<ProductInput>>({
+    updateProduct: b.mutation<Product, { id: number } & Partial<ProductWrite>>({
       // FARMER (own) or ADMIN (any).
-      query: ({ id, ...body }) => ({
+      query: ({ id, ...input }) => ({
         url: `/products/${id}`,
         method: "PUT",
-        body,
+        body: productBody(input),
       }),
       invalidatesTags: ["Product", "Market"],
     }),
-    deleteProduct: b.mutation<Product, number>({
+    // The real API answers with an empty body.
+    deleteProduct: b.mutation<Product | null, number>({
       query: (id) => ({ url: `/products/${id}`, method: "DELETE" }),
       invalidatesTags: ["Product", "Market"],
     }),

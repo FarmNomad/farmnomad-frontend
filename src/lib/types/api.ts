@@ -115,9 +115,15 @@ export interface Notification {
 
 export const PRODUCT_CATEGORIES = ["Vegetables", "Fruit", "Grain", "Dairy", "Meat", "Other"] as const;
 
-/** Product input as the form collects it. The real API takes multipart; see api/farmnomad.ts. */
+/** Product fields as the form collects them. */
 export type ProductInput = Pick<Product, "name" | "price" | "quantityAvailable"> &
   Partial<Pick<Product, "description" | "category" | "bestBeforeDate" | "pickupAddress" | "tags" | "coverImageUrl" | "imageUrls">>;
+
+/**
+ * What create and update send. The real API takes multipart: newly picked photos travel as files
+ * (`coverImage` is the cover, `images` the rest). The URL fields are only used by the sample data.
+ */
+export type ProductWrite = ProductInput & { coverImage?: File; images?: File[] };
 
 // ─── UI-derived helpers (not part of the API) ───
 export type StockState = "active" | "low" | "expiring" | "expired" | "out";

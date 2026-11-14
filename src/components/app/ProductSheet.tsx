@@ -4,8 +4,9 @@ import Image from "next/image";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { ImageSquare, Trash, Warning, X } from "@phosphor-icons/react/dist/ssr";
-import { useCreateProductMutation, useDeleteProductMutation, useRestoreProductMutation, useUpdateProductMutation } from "@/lib/api/farmnomad";
-import { PRODUCT_CATEGORIES, daysUntil, type ProductInput } from "@/lib/types/api";
+import { LIVE_API, useCreateProductMutation, useDeleteProductMutation, useMeQuery, useRestoreProductMutation, useUpdateProductMutation } from "@/lib/api/farmnomad";
+import { apiError } from "@/lib/api/errors";
+import { PRODUCT_CATEGORIES, daysUntil, type ProductWrite } from "@/lib/types/api";
 import { cn } from "@/lib/cn";
 import { useApp } from "./AppState";
 import { Sheet } from "./Sheet";
@@ -13,6 +14,10 @@ import { Button, Kbd } from "./ui";
 
 const empty = { name: "", description: "", price: "", quantityAvailable: "", category: "Vegetables", bestBeforeDate: "", pickupAddress: "Hollins Farm, Moss Lane, Garstang PR3 1ZA", tags: [] as string[], photos: [] as string[] };
 type Form = typeof empty;
+
+// Photos picked in this session, by their preview URL. The form keeps URLs (for showing and
+// ordering); this is how the real file is found again when the product is saved.
+const pickedFiles = new Map<string, File>();
 type Errors = Partial<Record<keyof Form, string>>;
 
 export function ProductSheet() {
@@ -26,7 +31,10 @@ export function ProductSheet() {
   const [update, { isLoading: updating }] = useUpdateProductMutation();
   const [del] = useDeleteProductMutation();
   const [restore] = useRestoreProductMutation();
+  const { data: me } = useMeQuery();
   const formRef = useRef<HTMLFormElement>(null);
+  // On the real API a new listing starts from the farmer's own address.
+  const myAddress = [me?.address, me?.city, me?.postcode].filter(Boolean).join(", ");
 
   useEffect(() => {
     if (!open) return;
@@ -44,9 +52,11 @@ export function ProductSheet() {
             tags: editing.tags ?? [],
             photos: [editing.coverImageUrl, ...(editing.imageUrls ?? [])].filter(Boolean) as string[],
           }
-        : empty,
+        : LIVE_API
+          ? { ...empty, pickupAddress: myAddress }
+          : empty,
     );
-  }, [open, editing]);
+  }, [open, editing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const close = () => setProductSheet(null);
   const set = <K extends keyof Form>(k: K, v: Form[K]) => {
@@ -72,7 +82,7 @@ export function ProductSheet() {
       formRef.current?.querySelector<HTMLElement>("[aria-invalid=true]")?.focus();
       return;
     }
-    const body: ProductInput = {
+    const body: ProductWrite = {
       name: f.name.trim(),
       description: f.description.trim() || undefined,
       price: Math.round(Number(f.price) * 100) / 100,
@@ -81,9 +91,16 @@ export function ProductSheet() {
       bestBeforeDate: f.bestBeforeDate || undefined,
       pickupAddress: f.pickupAddress || undefined,
       tags: f.tags,
-      // Real API: coverImage (file) + images[] (files) as multipart. The first photo is the cover.
+      // Sample data keeps the photos as URLs. The first photo is the cover.
       coverImageUrl: f.photos[0],
       imageUrls: f.photos.slice(1),
+      // Real API: only photos picked just now are sent, as files. The first photo is the cover
+      // when it is a new one; photos already on the server stay as they are.
+      coverImage: pickedFiles.get(f.photos[0] ?? ""),
+      images: f.photos
+        .slice(1)
+        .map((src) => pickedFiles.get(src))
+        .filter((file): file is File => !!file),
     };
     try {
       if (editing) {
@@ -94,19 +111,24 @@ export function ProductSheet() {
         toast.success("Product listed", { description: `${body.name} is live for buyers nearby.` });
       }
       close();
-    } catch {
-      toast.error("That didn't save", { description: "Check your connection and try again." });
+    } catch (err) {
+      toast.error("That didn't save", { description: apiError(err, "Check your connection and try again.") });
     }
   }
 
   async function remove() {
     if (!editing) return;
     const snapshot = editing;
+    // The real API deletes for good, so ask first. Sample data offers Undo instead.
+    if (LIVE_API && !window.confirm(`Delete ${snapshot.name}? This can't be undone.`)) return;
     close();
-    await del(snapshot.id);
-    toast(`Deleted ${snapshot.name}`, {
-      action: { label: "Undo", onClick: () => restore(snapshot) },
-    });
+    try {
+      await del(snapshot.id).unwrap();
+    } catch (err) {
+      toast.error(`Couldn't delete ${snapshot.name}`, { description: apiError(err, "Try again.") });
+      return;
+    }
+    toast(`Deleted ${snapshot.name}`, LIVE_API ? undefined : { action: { label: "Undo", onClick: () => restore(snapshot) } });
   }
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -275,7 +297,11 @@ export function PhotosPicker({ value, onChange }: { value: string[]; onChange: (
     if (!files) return;
     const urls = Array.from(files)
       .filter((f) => f.type.startsWith("image/"))
-      .map((f) => URL.createObjectURL(f));
+      .map((f) => {
+        const url = URL.createObjectURL(f);
+        pickedFiles.set(url, f);
+        return url;
+      });
     onChange([...value, ...urls].slice(0, MAX_PHOTOS));
   };
   return (
