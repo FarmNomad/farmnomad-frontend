@@ -22,7 +22,9 @@ import {
   CircleNotch,
   CookingPot,
   EnvelopeSimple,
+  GlobeHemisphereWest,
   GoogleLogo,
+  House,
   HandHeart,
   LockSimple,
   MapPin,
@@ -1072,7 +1074,10 @@ type Details = {
   phoneNumber: string;
   password: string;
   confirm: string;
+  address: string;
+  city: string;
   postcode: string;
+  country: string;
   orgName: string; // farm, organisation or kitchen name
   grows: string[];
   vehicle: string;
@@ -1089,7 +1094,10 @@ const EMPTY: Details = {
   phoneNumber: "",
   password: "",
   confirm: "",
+  address: "",
+  city: "",
   postcode: "",
+  country: "United Kingdom",
   orgName: "",
   grows: [],
   vehicle: "",
@@ -1136,6 +1144,9 @@ function Register({
     if (f.confirm !== f.password) er.confirm = "The passwords don't match.";
     if (!POSTCODE.test(f.postcode.trim()))
       er.postcode = "Enter a UK postcode, like PR1 8JA.";
+    if (!f.address.trim()) er.address = "Add your street address.";
+    if (!f.city.trim()) er.city = "Add your town or city.";
+    if (!f.country.trim()) er.country = "Add your country.";
     if (role !== "CUSTOMER" && !f.phoneNumber.trim())
       er.phoneNumber = "Add a number so buyers and drivers can reach you.";
     if (
@@ -1166,8 +1177,10 @@ function Register({
         email: f.email.trim(),
         password: f.password,
         ...(f.phoneNumber.trim() && { phoneNumber: f.phoneNumber.trim() }),
+        address: f.address.trim(),
+        city: f.city.trim(),
         postcode: f.postcode.trim().toUpperCase(),
-        country: "United Kingdom",
+        country: f.country.trim(),
         role,
       }).unwrap();
       setStep("done");
@@ -1396,6 +1409,9 @@ function Register({
               f={f}
               set={set}
               error={errors.postcode}
+              addressError={errors.address}
+              cityError={errors.city}
+              countryError={errors.country}
               label="Farm postcode"
               hint="Where buyers' orders are collected from."
             />
@@ -1436,6 +1452,9 @@ function Register({
               f={f}
               set={set}
               error={errors.postcode}
+              addressError={errors.address}
+              cityError={errors.city}
+              countryError={errors.country}
               label="Delivery postcode"
               hint="So we can show the farms that deliver to you."
             />
@@ -1454,6 +1473,9 @@ function Register({
               f={f}
               set={set}
               error={errors.postcode}
+              addressError={errors.address}
+              cityError={errors.city}
+              countryError={errors.country}
               label="Home postcode"
               hint="We offer runs that start near you."
             />
@@ -1521,6 +1543,9 @@ function Register({
               f={f}
               set={set}
               error={errors.postcode}
+              addressError={errors.address}
+              cityError={errors.city}
+              countryError={errors.country}
               label="Collection postcode"
               hint="Where surplus is delivered or collected."
             />
@@ -1541,6 +1566,9 @@ function Register({
               f={f}
               set={set}
               error={errors.postcode}
+              addressError={errors.address}
+              cityError={errors.city}
+              countryError={errors.country}
               label="Kitchen postcode"
             />
             <Choice
@@ -1626,16 +1654,43 @@ function PostcodeField({
   f,
   set,
   error,
+  addressError,
+  cityError,
+  countryError,
   label,
   hint,
 }: {
   f: Details;
   set: <K extends keyof Details>(k: K, v: Details[K]) => void;
   error?: string;
+  addressError?: string;
+  cityError?: string;
+  countryError?: string;
   label: string;
   hint?: string;
 }) {
   return (
+    <>
+    <AuthInput
+      label="Address"
+      required
+      value={f.address}
+      onChange={(e) => set("address", e.target.value)}
+      placeholder="House number and street"
+      autoComplete="street-address"
+      icon={<House className="size-[18px]" />}
+      error={addressError}
+    />
+    <AuthInput
+      label="Town or city"
+      required
+      value={f.city}
+      onChange={(e) => set("city", e.target.value)}
+      placeholder="e.g. Preston"
+      autoComplete="address-level2"
+      icon={<Buildings className="size-[18px]" />}
+      error={cityError}
+    />
     <AuthInput
       label={label}
       required
@@ -1648,5 +1703,16 @@ function PostcodeField({
       hint={hint}
       className="[&_input]:uppercase [&_input]:placeholder:normal-case"
     />
+    <AuthInput
+      label="Country"
+      required
+      value={f.country}
+      onChange={(e) => set("country", e.target.value)}
+      placeholder="United Kingdom"
+      autoComplete="country-name"
+      icon={<GlobeHemisphereWest className="size-[18px]" />}
+      error={countryError}
+    />
+    </>
   );
 }
