@@ -34,13 +34,16 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react/dist/ssr";
 import {
+  LIVE_API,
   useForgotPasswordMutation,
+  useLazyMeQuery,
   useLoginMutation,
   useRegisterMutation,
   useResendVerificationMutation,
   useVerifyEmailMutation,
 } from "@/lib/api/farmnomad";
 import { HOME, ROLE_META } from "@/lib/navigation";
+import { clearSession, setSession } from "@/lib/auth/session";
 import type { MockRole, Role } from "@/lib/types/api";
 import { useApp } from "@/components/app/AppState";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
@@ -408,6 +411,7 @@ function LoginForm({
   const router = useRouter();
   const { setRole } = useApp();
   const [login, { isLoading }] = useLoginMutation();
+  const [fetchMe, { isFetching: loadingMe }] = useLazyMeQuery();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
@@ -422,20 +426,27 @@ function LoginForm({
       ? { email: ROLE_META[as].demoEmail, password: "demo-password" }
       : { email, password };
     try {
-      const { token } = await login(creds).unwrap();
-      try {
-        window.localStorage.setItem("fn_token", token);
-      } catch {}
-      // Real API: GET /users/me → routeAfterLogin(me.role). The demo picks the role from the account.
-      const role: MockRole =
-        as ??
-        (Object.keys(ROLE_META) as MockRole[]).find(
-          (r) => ROLE_META[r].demoEmail === creds.email.toLowerCase(),
-        ) ??
-        (/farm/i.test(creds.email) ? "FARMER" : "CUSTOMER");
+      const { token, refreshToken } = await login(creds).unwrap();
+      setSession({ token, refreshToken });
+      let role: MockRole;
+      if (LIVE_API) {
+        // The login response has no user in it. The role comes from GET /users/me.
+        const me = await fetchMe().unwrap();
+        if (!(me.role in HOME)) throw { data: { message: "This account has a role FarmNomad doesn't recognise." } };
+        role = me.role;
+      } else {
+        // Sample data: pick the role from the demo account.
+        role =
+          as ??
+          (Object.keys(ROLE_META) as MockRole[]).find(
+            (r) => ROLE_META[r].demoEmail === creds.email.toLowerCase(),
+          ) ??
+          (/farm/i.test(creds.email) ? "FARMER" : "CUSTOMER");
+      }
       setRole(role);
-      router.push(HOME[role]);
+      router.replace(HOME[role]);
     } catch (err) {
+      clearSession();
       setError(
         (err as { data?: { message?: string } })?.data?.message ??
           "Something went wrong. Try again.",
@@ -484,7 +495,7 @@ function LoginForm({
         >
           {error}
         </p>
-        <PrimaryButton type="submit" loading={isLoading} className="mt-1">
+        <PrimaryButton type="submit" loading={isLoading || loadingMe} className="mt-1">
           Log in
         </PrimaryButton>
       </form>
@@ -686,7 +697,7 @@ function VerifyEmail({
     const timer = window.setTimeout(() => setSlow(true), 5000);
     verify({ token })
       .unwrap()
-      .then((res) => setState({ status: "done", message: res?.message }))
+      .then((res) => setState({ status: "done", message: res?.message ?? undefined }))
       .catch((err) => setState({ status: "failed", message: apiMessage(err) }))
       .finally(() => window.clearTimeout(timer));
   }, [token, verify]);

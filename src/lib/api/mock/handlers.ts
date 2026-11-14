@@ -289,9 +289,21 @@ const routes: [string, RegExp, (m: RegExpMatchArray, r: Req) => Res][] = [
       if (!currentPassword) return bad("Enter your current password.");
       if (!newPassword || newPassword.length < 8)
         return bad("Use at least 8 characters.");
-      return { data: { ok: true } };
+      return { data: { message: "Your password has been changed." } };
     },
   ],
+  [
+    "POST",
+    /^\/auth\/reset-password$/,
+    (_, r) => {
+      const { token, newPassword } = (r.body ?? {}) as { token?: string; newPassword?: string };
+      // Demo: any token works, except "expired", which shows the failed state.
+      if (!token || token === "expired") return bad("Invalid or expired token");
+      if (!newPassword || newPassword.length < 8) return bad("Use at least 8 characters.");
+      return { data: { message: "Your password has been reset. You can log in now." } };
+    },
+  ],
+  ["POST", /^\/auth\/logout$/, () => ({ data: { message: "Logged out" } })],
   [
     "POST",
     /^\/auth\/login$/,
@@ -308,7 +320,7 @@ const routes: [string, RegExp, (m: RegExpMatchArray, r: Req) => Res][] = [
             data: { message: "That email and password don't match." },
           },
         };
-      return { data: { token: "mock-token" } };
+      return { data: { token: "mock-token", refreshToken: "mock-refresh-token" } };
     },
   ],
   [
@@ -317,7 +329,7 @@ const routes: [string, RegExp, (m: RegExpMatchArray, r: Req) => Res][] = [
     (_, r) => {
       const { email } = (r.body ?? {}) as { email?: string };
       return email && /\S+@\S+\.\S+/.test(email)
-        ? { data: { ok: true } }
+        ? { data: { message: "If that account exists, a reset link has been sent." } }
         : bad("Enter a full email address.");
     },
   ],
@@ -332,7 +344,7 @@ const routes: [string, RegExp, (m: RegExpMatchArray, r: Req) => Res][] = [
       };
       if (!b.fullName || !b.email || !b.password)
         return bad("Fill in your name, email and password.");
-      return { data: { ok: true } };
+      return { data: { id: 999, fullName: b.fullName, email: b.email, role: "CUSTOMER", active: false } };
     },
   ],
 

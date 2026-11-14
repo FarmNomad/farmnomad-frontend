@@ -17,8 +17,38 @@ export interface User {
   postcode?: string | null;
   country?: string | null;
   profilePictureUrl?: string | null;
-  /** CONFIRM WITH BACKEND: not in the documented user shape; the admin list uses it for "joined". */
+  /** False until the email address has been verified. */
+  active?: boolean;
   createdAt?: string;
+}
+
+/** POST /auth/login and /auth/refresh. Refresh rotates the refresh token, so store both each time. */
+export interface AuthTokens {
+  token: string;
+  refreshToken: string;
+  userId?: number;
+  role?: Role;
+  fullName?: string;
+  message?: string | null;
+}
+
+/** POST /auth/register. ADMIN cannot self-register. */
+export interface RegisterInput {
+  fullName: string;
+  email: string;
+  password: string;
+  phoneNumber?: string;
+  address?: string;
+  city?: string;
+  postcode?: string;
+  country?: string;
+  profilePictureUrl?: string;
+  role: Exclude<Role, "ADMIN">;
+}
+
+/** The auth routes that only confirm something happened. */
+export interface ApiMessage {
+  message?: string | null;
 }
 
 export interface Product {

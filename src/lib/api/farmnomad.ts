@@ -1,11 +1,13 @@
 import {
   createApi,
-  fetchBaseQuery,
   type BaseQueryFn,
   type FetchArgs,
   type FetchBaseQueryError,
 } from "@reduxjs/toolkit/query/react";
+import { liveBaseQuery } from "./liveBaseQuery";
 import type {
+  ApiMessage,
+  AuthTokens,
   CartItem,
   CheckoutSession,
   Donation,
@@ -20,28 +22,23 @@ import type {
   Organisation,
   Product,
   ProductInput,
+  RegisterInput,
   Surplus,
   User,
 } from "@/lib/types/api";
 
 /**
- * One switch between sample data and the Spring Boot API.
- * NEXT_PUBLIC_USE_MOCKS defaults to on. Set it to "false" and NEXT_PUBLIC_API_URL to the backend
- * (e.g. http://localhost:9000/api) and every hook below talks to the real thing.
+ * Where the data comes from.
+ *
+ * NEXT_PUBLIC_USE_MOCKS defaults to on: everything runs on sample data, no backend needed.
+ * Set it to "false" (with NEXT_PUBLIC_API_URL pointing at the backend) and the routes listed in
+ * LIVE_ROUTES go to the Spring Boot API. Everything else still uses sample data until its phase
+ * of the integration lands; add its routes to LIVE_ROUTES then.
  */
-const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS !== "false";
+export const LIVE_API = process.env.NEXT_PUBLIC_USE_MOCKS === "false";
 
-const realBaseQuery = fetchBaseQuery({
-  baseUrl: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:9000/api",
-  prepareHeaders: (headers) => {
-    const token =
-      typeof window !== "undefined"
-        ? window.localStorage.getItem("fn_token")
-        : null;
-    if (token) headers.set("Authorization", `Bearer ${token}`);
-    return headers;
-  },
-});
+// Phase 1: auth and the signed-in user.
+const LIVE_ROUTES: RegExp[] = [/^\/auth\//, /^\/users\/me$/];
 
 const mockBaseQuery: BaseQueryFn<
   string | FetchArgs,
@@ -61,9 +58,14 @@ const mockBaseQuery: BaseQueryFn<
     : { data: res.data };
 };
 
+const baseQuery: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> = (args, baseApi, extra) => {
+  const path = (typeof args === "string" ? args : args.url).split("?")[0];
+  return LIVE_API && LIVE_ROUTES.some((r) => r.test(path)) ? liveBaseQuery(args, baseApi, extra) : mockBaseQuery(args, baseApi, extra);
+};
+
 export const api = createApi({
   reducerPath: "api",
-  baseQuery: USE_MOCKS ? mockBaseQuery : realBaseQuery,
+  baseQuery,
   tagTypes: [
     "Product",
     "Order",
@@ -154,20 +156,29 @@ export const api = createApi({
       }),
       invalidatesTags: ["Me"],
     }),
-    changePassword: b.mutation<
-      { ok: boolean },
-      { currentPassword: string; newPassword: string }
-    >({
+    // ───────── Auth (integration brief §2) ─────────
+    changePassword: b.mutation<ApiMessage, { currentPassword: string; newPassword: string }>({
       query: (body) => ({ url: "/auth/change-password", method: "POST", body }),
     }),
-    login: b.mutation<{ token: string }, { email: string; password: string }>({
+    // Returns tokens only. The user and their role come from GET /users/me afterwards.
+    login: b.mutation<AuthTokens, { email: string; password: string }>({
       query: (body) => ({ url: "/auth/login", method: "POST", body }),
     }),
-    forgotPassword: b.mutation<{ ok: boolean }, { email: string }>({
+    // Always 200 with a deliberately vague message (no account enumeration). Show the message as sent.
+    forgotPassword: b.mutation<ApiMessage, { email: string }>({
       query: (body) => ({ url: "/auth/forgot-password", method: "POST", body }),
     }),
-    register: b.mutation<{ ok: boolean }, Record<string, string>>({
+    // The token comes from the link in the reset email.
+    resetPassword: b.mutation<ApiMessage, { token: string; newPassword: string }>({
+      query: (body) => ({ url: "/auth/reset-password", method: "POST", body }),
+    }),
+    // Creates an inactive account and emails a verification link. Returns the user, not a session.
+    register: b.mutation<User, RegisterInput>({
       query: (body) => ({ url: "/auth/register", method: "POST", body }),
+    }),
+    // Ends the session on the server. Sending the refresh token revokes it too.
+    logout: b.mutation<ApiMessage, { refreshToken?: string }>({
+      query: (body) => ({ url: "/auth/logout", method: "POST", body }),
     }),
 
     listProducts: b.query<Product[], void>({
@@ -449,7 +460,7 @@ export const api = createApi({
       invalidatesTags: ["Users", "Me", "AdminOrders"],
     }),
     // Always 200 with a deliberately vague message (no account enumeration). Show the message as sent.
-    resendVerification: b.mutation<{ message?: string }, { email: string }>({
+    resendVerification: b.mutation<ApiMessage, { email: string }>({
       query: (body) => ({
         url: "/auth/resend-verification",
         method: "POST",
@@ -457,7 +468,7 @@ export const api = createApi({
       }),
     }),
     // The token comes from the link in the verification email. Returns a message, not a session: the user still logs in.
-    verifyEmail: b.mutation<{ message?: string }, { token: string }>({
+    verifyEmail: b.mutation<ApiMessage, { token: string }>({
       query: (body) => ({ url: "/auth/verify-email", method: "POST", body }),
     }),
     allMealsAdmin: b.query<Meal[], void>({
@@ -542,6 +553,9 @@ export const api = createApi({
 
 export const {
   useMeQuery,
+  useLazyMeQuery,
+  useResetPasswordMutation,
+  useLogoutMutation,
   useListMyProductsQuery,
   useCreateProductMutation,
   useUpdateProductMutation,
