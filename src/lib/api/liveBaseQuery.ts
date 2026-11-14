@@ -71,6 +71,8 @@ function endSession() {
   clearSession();
   if (typeof window === "undefined") return;
   const onAuthPage = /^\/(login|register|forgot-password|reset-password|verify-email|resend-verification)/.test(window.location.pathname);
+  // A full page load on purpose: this runs outside React, and it drops everything cached for the old session.
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
   if (!onAuthPage) window.location.assign("/login?expired=1");
 }
 

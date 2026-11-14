@@ -6,7 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Toaster } from "sonner";
 import { Bell, Check, HandHeart, List, Package, Receipt, ShoppingBagOpen } from "@phosphor-icons/react/dist/ssr";
-import { useGetCartQuery, useMarkNotificationReadMutation, useMyNotificationsQuery } from "@/lib/api/farmnomad";
+import { LIVE_API, useGetCartQuery, useMarkNotificationReadMutation, useMeQuery, useMyNotificationsQuery } from "@/lib/api/farmnomad";
+import { getSession } from "@/lib/auth/session";
 import { HOME, NAV, ROLE_META, allNav, canOpen } from "@/lib/navigation";
 import { cn } from "@/lib/cn";
 import { AppState, useApp } from "./AppState";
@@ -33,10 +34,21 @@ export function AppShell({ children }: { children: ReactNode }) {
 }
 
 function Frame({ children }: { children: ReactNode }) {
-  const { role, theme, resolvedDark, mobileNav, setMobileNav } = useApp();
+  const { role, setRole, theme, resolvedDark, mobileNav, setMobileNav } = useApp();
   const path = usePathname();
   const router = useRouter();
   useShortcuts();
+
+  // Real API: these pages need a session. Without one, go to log in. With one, GET /users/me says
+  // who this is, and their role decides which pages they get (the saved role is only a first guess).
+  const [signedIn] = useState(() => !LIVE_API || !!getSession());
+  const { data: me } = useMeQuery(undefined, { skip: !LIVE_API || !signedIn });
+  useEffect(() => {
+    if (!signedIn) router.replace("/login");
+  }, [signedIn, router]);
+  useEffect(() => {
+    if (LIVE_API && me && me.role in HOME && me.role !== role) setRole(me.role);
+  }, [me, role, setRole]);
 
   useEffect(() => {
     setMobileNav(false);
@@ -46,8 +58,10 @@ function Frame({ children }: { children: ReactNode }) {
   const blocked = !canOpen(role, path);
   const tabs = role === "CUSTOMER" || role === "DRIVER";
   useEffect(() => {
-    if (blocked) router.replace(HOME[role]);
-  }, [blocked, role, router]);
+    if (blocked && signedIn) router.replace(HOME[role]);
+  }, [blocked, role, router, signedIn]);
+
+  if (!signedIn) return <div className="fn-app h-[100dvh]" aria-busy="true" />;
 
   return (
     <div className="fn-app flex h-[100dvh] overflow-hidden" data-theme={theme === "system" ? undefined : theme}>

@@ -1,10 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { SignOut } from "@phosphor-icons/react/dist/ssr";
-import { useChangePasswordMutation, useMeQuery, useUpdateMeMutation } from "@/lib/api/farmnomad";
+import { useChangePasswordMutation, useLogoutMutation, useMeQuery, useUpdateMeMutation } from "@/lib/api/farmnomad";
+import { clearSession, getSession } from "@/lib/auth/session";
 import { ROLE_META } from "@/lib/navigation";
 import { PageHeader } from "@/components/app/PageHeader";
 import { Field, input } from "@/components/app/ProductSheet";
@@ -12,8 +12,8 @@ import { Avatar, Button, Skeleton } from "@/components/app/ui";
 
 /** Profile & settings: user fields from spec §2 (PUT /users/{id}) and change password (POST /auth/change-password). */
 export default function ProfilePage() {
-  const router = useRouter();
   const { data: me } = useMeQuery();
+  const [logout, { isLoading: signingOut }] = useLogoutMutation();
   const [update, { isLoading: saving }] = useUpdateMeMutation();
   const [changePw, { isLoading: changing }] = useChangePasswordMutation();
   const [f, setF] = useState({ fullName: "", phoneNumber: "", address: "", city: "", postcode: "", country: "" });
@@ -114,11 +114,18 @@ export default function ProfilePage() {
             <p className="text-app-faint">You&apos;ll need your email and password to get back in.</p>
           </div>
           <Button
-            onClick={() => {
+            disabled={signingOut}
+            onClick={async () => {
+              // Tell the server first (it revokes the refresh token), then forget the session here
+              // whether or not that call worked.
               try {
-                window.localStorage.removeItem("fn_token");
+                await logout({ refreshToken: getSession()?.refreshToken }).unwrap();
               } catch {}
-              router.push("/login");
+              clearSession();
+              // A full page load on purpose: Next keeps earlier pages alive in memory, so a soft
+              // navigation would bring back the previous user and their cached data.
+              // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+              window.location.assign("/login");
             }}
           >
             <SignOut className="size-4" /> Sign out

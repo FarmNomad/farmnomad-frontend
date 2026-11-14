@@ -40,6 +40,7 @@ import {
   useLoginMutation,
   useRegisterMutation,
   useResendVerificationMutation,
+  useResetPasswordMutation,
   useVerifyEmailMutation,
 } from "@/lib/api/farmnomad";
 import { HOME, ROLE_META } from "@/lib/navigation";
@@ -58,7 +59,13 @@ import {
   SoftButton,
 } from "./parts";
 
-export type AuthMode = "login" | "register" | "forgot" | "verify" | "resend";
+export type AuthMode =
+  | "login"
+  | "register"
+  | "forgot"
+  | "reset"
+  | "verify"
+  | "resend";
 type SignupRole = Exclude<Role, "ADMIN">;
 
 // Spec §7.2: the five roles you can sign up as (never ADMIN), with what each side of FarmNomad offers.
@@ -167,11 +174,24 @@ const PATH: Record<AuthMode, string> = {
   login: "/login",
   register: "/register",
   forgot: "/forgot-password",
+  reset: "/reset-password",
   verify: "/verify-email",
   resend: "/resend-verification",
 };
-const apiMessage = (err: unknown) =>
-  (err as { data?: { message?: string } })?.data?.message;
+/** The API's own words when it sent some, or a plain explanation when the request never got an answer. */
+const apiMessage = (err: unknown): string | undefined => {
+  const e = err as {
+    status?: number | string;
+    data?: { message?: string | null };
+  };
+  if (e?.status === "TIMEOUT_ERROR")
+    return "The server took too long to answer. It may still be waking up, so try again.";
+  if (e?.status === "FETCH_ERROR")
+    return "Couldn't reach the server. Check your connection and try again.";
+  return e?.data?.message ?? undefined;
+};
+const SLOW_NOTE =
+  "Still working. The server is waking up, which can take up to a minute.";
 const POSTCODE = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
 const ease = [0.23, 1, 0.32, 1] as const;
 
@@ -335,10 +355,17 @@ export function AuthScreen({ initial }: { initial: AuthMode }) {
                 <LoginForm
                   onForgot={() => setMode("forgot")}
                   onSignup={() => setMode("register")}
+                  onResend={() => setMode("resend")}
                 />
               )}
               {mode === "forgot" && (
                 <ForgotForm onBack={() => setMode("login")} />
+              )}
+              {mode === "reset" && (
+                <ResetForm
+                  onLogin={() => setMode("login")}
+                  onForgot={() => setMode("forgot")}
+                />
               )}
               {mode === "verify" && (
                 <VerifyEmail
@@ -378,6 +405,60 @@ function Heading({ title, sub }: { title: string; sub?: ReactNode }) {
   );
 }
 
+/** After five seconds of waiting, say the server is waking up instead of looking stuck. */
+function SlowNote({ active }: { active: boolean }) {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setTimeout(() => setSlow(true), 5000);
+    return () => {
+      window.clearTimeout(timer);
+      setSlow(false);
+    };
+  }, [active]);
+  return (
+    <p
+      aria-live="polite"
+      className={cn("text-center text-ui-sm text-app-faint", !slow && "sr-only")}
+    >
+      {slow ? SLOW_NOTE : ""}
+    </p>
+  );
+}
+
+/** "Check your email" with the API's message shown as sent. It never says whether the account exists. */
+function MailNote({
+  message,
+  email,
+  onAgain,
+}: {
+  message: string;
+  email: string;
+  onAgain: () => void;
+}) {
+  return (
+    <div className="text-center" aria-live="polite">
+      <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-app-accent-soft text-app-accent shadow-[inset_0_0_0_1px_var(--a-accent-soft)]">
+        <EnvelopeSimple weight="duotone" className="size-7" />
+      </div>
+      <h1 className="mt-6 font-display text-[28px] font-medium tracking-[-0.03em]">
+        Check your email
+      </h1>
+      <p className="mt-2 text-app-muted">{message}</p>
+      <p className="mt-1 text-ui-sm text-app-faint">
+        Sent to <span className="font-medium text-app-text">{email}</span>
+      </p>
+      <button
+        type="button"
+        onClick={onAgain}
+        className="mt-4 text-ui-sm font-medium text-app-accent hover:underline"
+      >
+        Use a different email
+      </button>
+    </div>
+  );
+}
+
 function Socials({ verb }: { verb: string }) {
   // Not in the API yet (spec §3.1 has email + password only); kept visible so the layout is final.
   const soon = (p: string) =>
@@ -404,18 +485,26 @@ function Socials({ verb }: { verb: string }) {
 function LoginForm({
   onForgot,
   onSignup,
+  onResend,
 }: {
   onForgot: () => void;
   onSignup: () => void;
+  onResend: () => void;
 }) {
-  const router = useRouter();
   const { setRole } = useApp();
   const [login, { isLoading }] = useLoginMutation();
   const [fetchMe, { isFetching: loadingMe }] = useLazyMeQuery();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // ?expired=1 is added when a session ends and the app sends the user back here.
+  const [error, setError] = useState<string | null>(() =>
+    new URLSearchParams(window.location.search).get("expired")
+      ? "Your session ended. Log in again to carry on."
+      : null,
+  );
+  // An account that hasn't confirmed its email can't log in yet; offer a new link.
+  const unverified = !!error && /verif|not active|inactive|activate/i.test(error);
 
   async function submit(e: FormEvent | null, as?: MockRole) {
     e?.preventDefault();
@@ -444,13 +533,12 @@ function LoginForm({
           (/farm/i.test(creds.email) ? "FARMER" : "CUSTOMER");
       }
       setRole(role);
-      router.replace(HOME[role]);
+      // A full page load on purpose: Next keeps earlier pages alive in memory, so a soft
+      // navigation would bring back the previous user and their cached data.
+      window.location.assign(HOME[role]);
     } catch (err) {
       clearSession();
-      setError(
-        (err as { data?: { message?: string } })?.data?.message ??
-          "Something went wrong. Try again.",
-      );
+      setError(apiMessage(err) ?? "Something went wrong. Try again.");
     }
   }
 
@@ -494,10 +582,27 @@ function LoginForm({
           className={cn("text-ui-sm text-app-red", !error && "sr-only")}
         >
           {error}
+          {unverified && (
+            <>
+              {" "}
+              <button
+                type="button"
+                onClick={onResend}
+                className="font-medium text-app-accent underline underline-offset-2"
+              >
+                Send a new verification link
+              </button>
+            </>
+          )}
         </p>
-        <PrimaryButton type="submit" loading={isLoading || loadingMe} className="mt-1">
+        <PrimaryButton
+          type="submit"
+          loading={isLoading || loadingMe}
+          className="mt-1"
+        >
           Log in
         </PrimaryButton>
+        <SlowNote active={isLoading || loadingMe} />
       </form>
       <div className="mt-7 grid gap-5">
         <Socials verb="Log in" />
@@ -512,21 +617,24 @@ function LoginForm({
           Create an account
         </button>
       </p>
-      <div className="mt-8 grid justify-items-center gap-2 text-ui-sm text-app-faint">
-        Explore the demo as
-        <div className="flex flex-wrap justify-center gap-1.5">
-          {(Object.keys(ROLE_META) as MockRole[]).map((r) => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => submit(null, r)}
-              className="rounded-full px-2.5 py-1 font-medium text-app-text shadow-[inset_0_0_0_1px_var(--a-line-strong)] transition-colors hover:bg-app-hover"
-            >
-              {ROLE_META[r].label}
-            </button>
-          ))}
+      {/* Sample data only: jump in as any role without an account. */}
+      {!LIVE_API && (
+        <div className="mt-8 grid justify-items-center gap-2 text-ui-sm text-app-faint">
+          Explore the demo as
+          <div className="flex flex-wrap justify-center gap-1.5">
+            {(Object.keys(ROLE_META) as MockRole[]).map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => submit(null, r)}
+                className="rounded-full px-2.5 py-1 font-medium text-app-text shadow-[inset_0_0_0_1px_var(--a-line-strong)] transition-colors hover:bg-app-hover"
+              >
+                {ROLE_META[r].label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </>
   );
 }
@@ -537,19 +645,21 @@ function ForgotForm({ onBack }: { onBack: () => void }) {
   const [send, { isLoading }] = useForgotPasswordMutation();
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [sent, setSent] = useState(false);
+  const [sent, setSent] = useState<string | null>(null);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!/^\S+@\S+\.\S+$/.test(email.trim()))
+      return setError("Enter a full email address.");
     try {
-      await send({ email }).unwrap();
-      setSent(true);
-    } catch (err) {
-      setError(
-        (err as { data?: { message?: string } })?.data?.message ??
-          "Couldn't send the link. Try again.",
+      const res = await send({ email: email.trim() }).unwrap();
+      // The API answers the same way whether or not the account exists. Show its message as sent.
+      setSent(
+        res?.message ?? "If that account exists, a reset link has been sent.",
       );
+    } catch (err) {
+      setError(apiMessage(err) ?? "Couldn't send the link. Try again.");
     }
   }
 
@@ -563,10 +673,10 @@ function ForgotForm({ onBack }: { onBack: () => void }) {
         <ArrowLeft className="size-4" /> Back to log in
       </button>
       {sent ? (
-        <SentNote
-          email={email}
-          title="Check your email"
-          body="Open the link we sent to choose a new password. It expires in an hour."
+        <MailNote
+          message={sent}
+          email={email.trim()}
+          onAgain={() => setSent(null)}
         />
       ) : (
         <>
@@ -589,6 +699,7 @@ function ForgotForm({ onBack }: { onBack: () => void }) {
             <PrimaryButton type="submit" loading={isLoading}>
               Send reset link
             </PrimaryButton>
+            <SlowNote active={isLoading} />
           </form>
         </>
       )}
@@ -630,6 +741,120 @@ function SentNote({
         Didn&apos;t get it? Send again
       </button>
     </div>
+  );
+}
+
+/* ─── Reset password: the link in the reset email lands here with ?token= ─── */
+
+function ResetForm({
+  onLogin,
+  onForgot,
+}: {
+  onLogin: () => void;
+  onForgot: () => void;
+}) {
+  const [reset, { isLoading }] = useResetPasswordMutation();
+  const [token] = useState(
+    () =>
+      new URLSearchParams(window.location.search).get("token")?.trim() ?? "",
+  );
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [errors, setErrors] = useState<{
+    password?: string;
+    confirm?: string;
+    form?: string;
+  }>({});
+  const [done, setDone] = useState<string | null>(null);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const er: typeof errors = {};
+    if (password.length < 8) er.password = "Use at least 8 characters.";
+    if (confirm !== password) er.confirm = "The passwords don't match.";
+    setErrors(er);
+    if (Object.keys(er).length) return;
+    try {
+      const res = await reset({ token, newPassword: password }).unwrap();
+      setDone(res?.message ?? "Log in with your new password.");
+    } catch (err) {
+      setErrors({
+        form:
+          apiMessage(err) ??
+          "Couldn't change your password. The link may have expired.",
+      });
+    }
+  }
+
+  if (!token)
+    return (
+      <div aria-live="polite">
+        <StatusNote tone="bad" title="This link is incomplete">
+          Open the link from your reset email again, or ask for a new one.
+        </StatusNote>
+        <PrimaryButton className="mt-8" onClick={onForgot}>
+          Send a new link
+        </PrimaryButton>
+      </div>
+    );
+
+  if (done)
+    return (
+      <div aria-live="polite">
+        <StatusNote tone="ok" title="Password changed">
+          {done}
+        </StatusNote>
+        <PrimaryButton className="mt-8" onClick={onLogin}>
+          Log in
+        </PrimaryButton>
+      </div>
+    );
+
+  return (
+    <>
+      <Heading
+        title="Choose a new password"
+        sub="You'll use it the next time you log in."
+      />
+      <form onSubmit={submit} noValidate className="grid gap-4">
+        <AuthInput
+          label="New password"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="8 or more characters"
+          autoComplete="new-password"
+          icon={<LockSimple className="size-[18px]" />}
+          error={errors.password}
+        />
+        <AuthInput
+          label="Confirm"
+          type="password"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          placeholder="Type it again"
+          autoComplete="new-password"
+          icon={<LockSimple className="size-[18px]" />}
+          error={errors.confirm}
+        />
+        {errors.form && (
+          <p aria-live="polite" className="text-ui-sm text-app-red">
+            {errors.form}{" "}
+            <button
+              type="button"
+              onClick={onForgot}
+              className="font-medium text-app-accent underline underline-offset-2"
+            >
+              Send a new link
+            </button>
+          </p>
+        )}
+        <PrimaryButton type="submit" loading={isLoading} className="mt-1">
+          Change password
+        </PrimaryButton>
+        <SlowNote active={isLoading} />
+      </form>
+    </>
   );
 }
 
@@ -706,9 +931,7 @@ function VerifyEmail({
     return (
       <div aria-live="polite">
         <StatusNote tone="busy" title="Verifying your email">
-          {slow
-            ? "Still working. The server is waking up, which can take up to a minute."
-            : "This only takes a moment."}
+          {slow ? SLOW_NOTE : "This only takes a moment."}
         </StatusNote>
       </div>
     );
@@ -833,6 +1056,7 @@ function ResendForm({ onBack }: { onBack: () => void }) {
             <PrimaryButton type="submit" loading={isLoading}>
               Send verification link
             </PrimaryButton>
+            <SlowNote active={isLoading} />
           </form>
         </>
       )}
@@ -933,32 +1157,23 @@ function Register({
     setErrors(er);
     if (Object.keys(er).length) return;
     try {
-      // POST /auth/register takes the user fields + role (spec §3.1). The role details below are sent
-      // alongside for now; organisations then call POST /organisations {name, type, charityNumber} after
-      // verifying. Farm, driver and kitchen profile endpoints are still to confirm with the backend.
+      // POST /auth/register takes exactly these fields. It creates an inactive account and emails a
+      // verification link; there is no session until the link is opened and the user logs in.
+      // The role details collected below (farm name, vehicle, organisation type and so on) have no
+      // field on this endpoint yet. Organisations send theirs to POST /organisations after logging in.
       await register({
-        fullName: f.fullName,
-        email: f.email,
+        fullName: f.fullName.trim(),
+        email: f.email.trim(),
         password: f.password,
-        phoneNumber: f.phoneNumber,
-        postcode: f.postcode.toUpperCase(),
+        ...(f.phoneNumber.trim() && { phoneNumber: f.phoneNumber.trim() }),
+        postcode: f.postcode.trim().toUpperCase(),
         country: "United Kingdom",
         role,
-        ...(f.orgName && { organisationName: f.orgName }),
-        ...(role === "FARMER" && { produce: f.grows.join(",") }),
-        ...(role === "DRIVER" && { vehicle: f.vehicle, radiusMiles: f.radius }),
-        ...(role === "ORGANISATION" && {
-          organisationType: f.orgType,
-          charityNumber: f.charityNumber,
-        }),
-        ...(role === "KITCHEN" && { hygieneRating: f.hygiene }),
       }).unwrap();
       setStep("done");
     } catch (err) {
       setErrors({
-        form:
-          (err as { data?: { message?: string } })?.data?.message ??
-          "Couldn't create your account.",
+        form: apiMessage(err) ?? "Couldn't create your account.",
       });
     }
   }
@@ -985,15 +1200,21 @@ function Register({
               )
           }
         />
-        <PrimaryButton
-          className="mt-8"
-          onClick={() => {
-            app.setRole(role);
-            router.push(HOME[role]);
-          }}
-        >
-          Continue to the demo
-        </PrimaryButton>
+        {LIVE_API ? (
+          <PrimaryButton className="mt-8" onClick={onLogin}>
+            Go to log in
+          </PrimaryButton>
+        ) : (
+          <PrimaryButton
+            className="mt-8"
+            onClick={() => {
+              app.setRole(role);
+              router.push(HOME[role]);
+            }}
+          >
+            Continue to the demo
+          </PrimaryButton>
+        )}
       </>
     );
 
