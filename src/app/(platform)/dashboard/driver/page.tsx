@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowRight, ChatsCircle, CheckCircle, MapTrifold, Package, Truck } from "@phosphor-icons/react/dist/ssr";
-import { useAssignedOrdersQuery, useGetProductQuery, useMeQuery, useUnassignedOrdersQuery } from "@/lib/api/farmnomad";
+import { useAssignedOrdersQuery, useOrderProductQuery, useMeQuery, useUnassignedOrdersQuery } from "@/lib/api/farmnomad";
 import type { Order } from "@/lib/types/api";
 import { DonationTag, JobRow, MapsLink, Route, nextStep, useJobActions } from "@/components/app/driver/parts";
 import { statusMeta } from "@/components/app/orderMeta";
@@ -134,7 +134,7 @@ function Stat({ label, value, icon: Icon, loading, href }: { label: string; valu
 /** The job in hand: big, glanceable, one obvious next action. */
 function CurrentJob({ o }: { o: Order }) {
   const { advance, busy } = useJobActions();
-  const { data: p } = useGetProductQuery(o.productId);
+  const { data: p } = useOrderProductQuery(o.productId);
   const step = nextStep(o);
   const m = statusMeta[o.status];
   const toFarm = o.status === "ASSIGNED";

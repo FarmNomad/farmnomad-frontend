@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Toaster } from "sonner";
 import { Bell, Check, HandHeart, List, Package, Receipt, ShoppingBagOpen } from "@phosphor-icons/react/dist/ssr";
-import { LIVE_API, useGetCartQuery, useMarkNotificationReadMutation, useMeQuery, useMyNotificationsQuery } from "@/lib/api/farmnomad";
+import { useGetCartQuery, useMarkNotificationReadMutation, useMeQuery, useMyNotificationsQuery } from "@/lib/api/farmnomad";
 import { getSession } from "@/lib/auth/session";
 import { HOME, NAV, ROLE_META, allNav, canOpen } from "@/lib/navigation";
 import { cn } from "@/lib/cn";
@@ -39,15 +39,15 @@ function Frame({ children }: { children: ReactNode }) {
   const router = useRouter();
   useShortcuts();
 
-  // Real API: these pages need a session. Without one, go to log in. With one, GET /users/me says
-  // who this is, and their role decides which pages they get (the saved role is only a first guess).
-  const [signedIn] = useState(() => !LIVE_API || !!getSession());
-  const { data: me } = useMeQuery(undefined, { skip: !LIVE_API || !signedIn });
+  // These pages need a session. Without one, go to log in. With one, GET /users/me says who this
+  // is, and their role decides which pages they get (the saved role is only a first guess).
+  const [signedIn] = useState(() => !!getSession());
+  const { data: me } = useMeQuery(undefined, { skip: !signedIn });
   useEffect(() => {
     if (!signedIn) router.replace("/login");
   }, [signedIn, router]);
   useEffect(() => {
-    if (LIVE_API && me && me.role in HOME && me.role !== role) setRole(me.role);
+    if (me && me.role in HOME && me.role !== role) setRole(me.role);
   }, [me, role, setRole]);
 
   useEffect(() => {

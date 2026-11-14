@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { ImageSquare, Trash, Warning, X } from "@phosphor-icons/react/dist/ssr";
-import { LIVE_API, useCreateProductMutation, useDeleteProductMutation, useMeQuery, useRestoreProductMutation, useUpdateProductMutation } from "@/lib/api/farmnomad";
+import { useCreateProductMutation, useDeleteProductMutation, useMeQuery, useUpdateProductMutation } from "@/lib/api/farmnomad";
 import { apiError } from "@/lib/api/errors";
 import { PRODUCT_CATEGORIES, daysUntil, type ProductWrite } from "@/lib/types/api";
 import { cn } from "@/lib/cn";
@@ -12,7 +12,7 @@ import { useApp } from "./AppState";
 import { Sheet } from "./Sheet";
 import { Button, Kbd } from "./ui";
 
-const empty = { name: "", description: "", price: "", quantityAvailable: "", category: "Vegetables", bestBeforeDate: "", pickupAddress: "Hollins Farm, Moss Lane, Garstang PR3 1ZA", tags: [] as string[], photos: [] as string[] };
+const empty = { name: "", description: "", price: "", quantityAvailable: "", category: "Vegetables", bestBeforeDate: "", pickupAddress: "", tags: [] as string[], photos: [] as string[] };
 type Form = typeof empty;
 
 // Photos picked in this session, by their preview URL. The form keeps URLs (for showing and
@@ -30,10 +30,9 @@ export function ProductSheet() {
   const [create, { isLoading: creating }] = useCreateProductMutation();
   const [update, { isLoading: updating }] = useUpdateProductMutation();
   const [del] = useDeleteProductMutation();
-  const [restore] = useRestoreProductMutation();
   const { data: me } = useMeQuery();
   const formRef = useRef<HTMLFormElement>(null);
-  // On the real API a new listing starts from the farmer's own address.
+  // A new listing starts from the farmer's own address.
   const myAddress = [me?.address, me?.city, me?.postcode].filter(Boolean).join(", ");
 
   useEffect(() => {
@@ -52,9 +51,7 @@ export function ProductSheet() {
             tags: editing.tags ?? [],
             photos: [editing.coverImageUrl, ...(editing.imageUrls ?? [])].filter(Boolean) as string[],
           }
-        : LIVE_API
-          ? { ...empty, pickupAddress: myAddress }
-          : empty,
+        : { ...empty, pickupAddress: myAddress },
     );
   }, [open, editing]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -91,10 +88,7 @@ export function ProductSheet() {
       bestBeforeDate: f.bestBeforeDate || undefined,
       pickupAddress: f.pickupAddress || undefined,
       tags: f.tags,
-      // Sample data keeps the photos as URLs. The first photo is the cover.
-      coverImageUrl: f.photos[0],
-      imageUrls: f.photos.slice(1),
-      // Real API: only photos picked just now are sent, as files. The first photo is the cover
+      // Only photos picked just now are sent, as files. The first photo is the cover
       // when it is a new one; photos already on the server stay as they are.
       coverImage: pickedFiles.get(f.photos[0] ?? ""),
       images: f.photos
@@ -119,8 +113,8 @@ export function ProductSheet() {
   async function remove() {
     if (!editing) return;
     const snapshot = editing;
-    // The real API deletes for good, so ask first. Sample data offers Undo instead.
-    if (LIVE_API && !window.confirm(`Delete ${snapshot.name}? This can't be undone.`)) return;
+    // Deleting is permanent, so ask first.
+    if (!window.confirm(`Delete ${snapshot.name}? This can't be undone.`)) return;
     close();
     try {
       await del(snapshot.id).unwrap();
@@ -128,7 +122,7 @@ export function ProductSheet() {
       toast.error(`Couldn't delete ${snapshot.name}`, { description: apiError(err, "Try again.") });
       return;
     }
-    toast(`Deleted ${snapshot.name}`, LIVE_API ? undefined : { action: { label: "Undo", onClick: () => restore(snapshot) } });
+    toast(`Deleted ${snapshot.name}`);
   }
 
   const onKeyDown = (e: KeyboardEvent) => {

@@ -97,13 +97,13 @@ export const HOME: Record<MockRole, string> = {
   ADMIN: "/dashboard/admin",
 };
 
-export const ROLE_META: Record<MockRole, { label: string; workspace: string; demoEmail: string }> = {
-  FARMER: { label: "Farmer", workspace: "Hollins Farm", demoEmail: "tom@hollinsfarm.co.uk" },
-  CUSTOMER: { label: "Customer", workspace: "FarmNomad", demoEmail: "amara.okafor@example.com" },
-  DRIVER: { label: "Driver", workspace: "Driving", demoEmail: "sam.patel@example.com" },
-  ORGANISATION: { label: "Food group", workspace: "St Mary's Food Bank", demoEmail: "ruth@stmarysfoodbank.org.uk" },
-  KITCHEN: { label: "Kitchen", workspace: "Fishergate Kitchen", demoEmail: "lena@fishergatekitchen.co.uk" },
-  ADMIN: { label: "Admin", workspace: "FarmNomad admin", demoEmail: "admin@farmnomad.co.uk" },
+export const ROLE_META: Record<MockRole, { label: string; workspace: string }> = {
+  FARMER: { label: "Farmer", workspace: "Your farm" },
+  CUSTOMER: { label: "Customer", workspace: "FarmNomad" },
+  DRIVER: { label: "Driver", workspace: "Driving" },
+  ORGANISATION: { label: "Food group", workspace: "Your organisation" },
+  KITCHEN: { label: "Kitchen", workspace: "Your kitchen" },
+  ADMIN: { label: "Admin", workspace: "FarmNomad admin" },
 };
 
 /**

@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import {
   useEffect,
@@ -36,7 +35,6 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react/dist/ssr";
 import {
-  LIVE_API,
   useForgotPasswordMutation,
   useLazyMeQuery,
   useLoginMutation,
@@ -45,9 +43,9 @@ import {
   useResetPasswordMutation,
   useVerifyEmailMutation,
 } from "@/lib/api/farmnomad";
-import { HOME, ROLE_META } from "@/lib/navigation";
+import { HOME } from "@/lib/navigation";
 import { clearSession, setSession } from "@/lib/auth/session";
-import type { MockRole, Role } from "@/lib/types/api";
+import type { Role } from "@/lib/types/api";
 import { useApp } from "@/components/app/AppState";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { cn } from "@/lib/cn";
@@ -508,32 +506,20 @@ function LoginForm({
   // An account that hasn't confirmed its email can't log in yet; offer a new link.
   const unverified = !!error && /verif|not active|inactive|activate/i.test(error);
 
-  async function submit(e: FormEvent | null, as?: MockRole) {
-    e?.preventDefault();
+  async function submit(e: FormEvent) {
+    e.preventDefault();
     setError(null);
-    if (!as && (!email || !password))
-      return setError("Enter your email and password.");
-    const creds = as
-      ? { email: ROLE_META[as].demoEmail, password: "demo-password" }
-      : { email, password };
+    if (!email || !password) return setError("Enter your email and password.");
     try {
-      const { token, refreshToken } = await login(creds).unwrap();
+      const { token, refreshToken } = await login({ email, password }).unwrap();
       setSession({ token, refreshToken });
-      let role: MockRole;
-      if (LIVE_API) {
-        // The login response has no user in it. The role comes from GET /users/me.
-        const me = await fetchMe().unwrap();
-        if (!(me.role in HOME)) throw { data: { message: "This account has a role FarmNomad doesn't recognise." } };
-        role = me.role;
-      } else {
-        // Sample data: pick the role from the demo account.
-        role =
-          as ??
-          (Object.keys(ROLE_META) as MockRole[]).find(
-            (r) => ROLE_META[r].demoEmail === creds.email.toLowerCase(),
-          ) ??
-          (/farm/i.test(creds.email) ? "FARMER" : "CUSTOMER");
-      }
+      // The login response has no user in it. The role comes from GET /users/me.
+      const me = await fetchMe().unwrap();
+      if (!(me.role in HOME))
+        throw {
+          data: { message: "This account has a role FarmNomad doesn't recognise." },
+        };
+      const role = me.role;
       setRole(role);
       // A full page load on purpose: Next keeps earlier pages alive in memory, so a soft
       // navigation would bring back the previous user and their cached data.
@@ -619,24 +605,6 @@ function LoginForm({
           Create an account
         </button>
       </p>
-      {/* Sample data only: jump in as any role without an account. */}
-      {!LIVE_API && (
-        <div className="mt-8 grid justify-items-center gap-2 text-ui-sm text-app-faint">
-          Explore the demo as
-          <div className="flex flex-wrap justify-center gap-1.5">
-            {(Object.keys(ROLE_META) as MockRole[]).map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => submit(null, r)}
-                className="rounded-full px-2.5 py-1 font-medium text-app-text shadow-[inset_0_0_0_1px_var(--a-line-strong)] transition-colors hover:bg-app-hover"
-              >
-                {ROLE_META[r].label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </>
   );
 }
@@ -1124,8 +1092,6 @@ function Register({
   details: [Details, Dispatch<SetStateAction<Details>>];
   onLogin: () => void;
 }) {
-  const router = useRouter();
-  const app = useApp();
   const [register, { isLoading }] = useRegisterMutation();
   const [resend] = useResendVerificationMutation();
   const [errors, setErrors] = useState<
@@ -1213,21 +1179,9 @@ function Register({
               )
           }
         />
-        {LIVE_API ? (
-          <PrimaryButton className="mt-8" onClick={onLogin}>
-            Go to log in
-          </PrimaryButton>
-        ) : (
-          <PrimaryButton
-            className="mt-8"
-            onClick={() => {
-              app.setRole(role);
-              router.push(HOME[role]);
-            }}
-          >
-            Continue to the demo
-          </PrimaryButton>
-        )}
+        <PrimaryButton className="mt-8" onClick={onLogin}>
+          Go to log in
+        </PrimaryButton>
       </>
     );
 

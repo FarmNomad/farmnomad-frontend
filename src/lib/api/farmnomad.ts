@@ -21,7 +21,6 @@ import type {
   OrderStatus,
   Organisation,
   Product,
-  ProductInput,
   ProductWrite,
   RegisterInput,
   Surplus,
@@ -31,12 +30,11 @@ import type {
 /**
  * Where the data comes from.
  *
- * NEXT_PUBLIC_USE_MOCKS defaults to on: everything runs on sample data, no backend needed.
- * Set it to "false" (with NEXT_PUBLIC_API_URL pointing at the backend) and the routes listed in
- * LIVE_ROUTES go to the Spring Boot API. Everything else still uses sample data until its phase
- * of the integration lands; add its routes to LIVE_ROUTES then.
+ * The Spring Boot API (NEXT_PUBLIC_API_URL) is the source of truth. Routes listed in LIVE_ROUTES
+ * go to it. A route that has not been integrated yet still answers from temporary placeholder
+ * data (./mock) so its page keeps working; move the route into LIVE_ROUTES when its phase lands,
+ * and delete ./mock once nothing is left on it.
  */
-export const LIVE_API = process.env.NEXT_PUBLIC_USE_MOCKS === "false";
 
 // A route is a method ("*" for any) and a path. Listing the method keeps a phase to exactly what it
 // integrated: the farmer's own products are live, while the marketplace list (GET /products) stays
@@ -50,10 +48,21 @@ const LIVE_ROUTES: [method: string, path: RegExp][] = [
   ["POST", /^\/products$/],
   ["PUT", /^\/products\/\d+$/],
   ["DELETE", /^\/products\/\d+$/],
+  // Phase 3: orders, and the accounts an admin assigns them to.
+  ["GET", /^\/orders$/],
+  ["GET", /^\/orders\/(my|assigned|unassigned|\d+)$/],
+  ["PATCH", /^\/orders\/\d+\/(assign|status)$/],
+  ["GET", /^\/users$/],
+  ["PUT", /^\/users\/\d+$/],
 ];
 
-// Lists the backend has no endpoint for yet. On the real API these come back empty, so a real
-// account never sees sample figures as if they were its own. Move a route to LIVE_ROUTES (with its
+// Endpoints whose every request is live, whatever the path. The order endpoints also read the
+// product on each order (GET /products/{id}); that path is otherwise still on placeholder data
+// for the marketplace, so it is switched on here by endpoint rather than by path.
+const LIVE_ENDPOINTS = new Set(["myOrders", "getOrder", "assignedOrders", "unassignedOrders", "listOrdersAdmin", "orderProduct"]);
+
+// Lists the backend has no endpoint for yet. These come back empty, so an account never sees
+// made-up figures as if they were its own. Move a route to LIVE_ROUTES (with its
 // real path) once the backend provides it.
 const NO_BACKEND_YET: [method: string, path: RegExp][] = [
   ["GET", /^\/orders\/my\/farmer$/], // a farmer's incoming orders
@@ -82,8 +91,9 @@ const baseQuery: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> =
   const path = (typeof args === "string" ? args : args.url).split("?")[0];
   const method = (typeof args === "string" ? "GET" : (args.method ?? "GET")).toUpperCase();
   const hit = (routes: [string, RegExp][]) => routes.some(([m, r]) => (m === "*" || m === method) && r.test(path));
-  if (LIVE_API && hit(NO_BACKEND_YET)) return { data: [] };
-  return LIVE_API && hit(LIVE_ROUTES) ? liveBaseQuery(args, baseApi, extra) : mockBaseQuery(args, baseApi, extra);
+  if (hit(NO_BACKEND_YET)) return { data: [] };
+  const live = hit(LIVE_ROUTES) || LIVE_ENDPOINTS.has(baseApi.endpoint);
+  return live ? liveBaseQuery(args, baseApi, extra) : mockBaseQuery(args, baseApi, extra);
 };
 
 /**
@@ -91,10 +101,8 @@ const baseQuery: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> =
  * fields, `tags` repeated once per tag, `coverImage` as one file and `images` as files.
  * No Content-Type is set here; the browser adds it with the multipart boundary.
  * Photos already on the server are not re-sent (the API takes files, not URLs).
- * On sample data the body stays JSON and the picked files are left out.
  */
-function productBody({ coverImage, images, ...fields }: Partial<ProductWrite>): FormData | Partial<ProductInput> {
-  if (!LIVE_API) return fields;
+function productBody({ coverImage, images, ...fields }: Partial<ProductWrite>): FormData {
   const fd = new FormData();
   const text = (k: string, v: string | number | undefined | null) => {
     if (v !== undefined && v !== null && v !== "") fd.append(k, String(v));
@@ -110,6 +118,38 @@ function productBody({ coverImage, images, ...fields }: Partial<ProductWrite>): 
   if (coverImage) fd.append("coverImage", coverImage);
   images?.forEach((f) => fd.append("images", f));
   return fd;
+}
+
+type Fetch = (arg: string | FetchArgs) => PromiseLike<{ data?: unknown; error?: FetchBaseQueryError }> | { data?: unknown; error?: FetchBaseQueryError };
+
+/**
+ * The API's order has no farm, pickup address, price or photo on it. Those live on the product,
+ * so each order is completed from its product: farm name, pickup address, unit price, total and
+ * cover photo. A product that has since been deleted simply leaves those blank.
+ * (The delivery address is not available from any endpoint yet.)
+ */
+async function completeOrders(fetch: Fetch, orders: Order[]): Promise<Order[]> {
+  const ids = [...new Set(orders.map((o) => o.productId))];
+  const found = await Promise.all(ids.map((id) => fetch(`/products/${id}`)));
+  const byId = new Map(ids.map((id, i) => [id, found[i].error ? undefined : (found[i].data as Product | undefined)]));
+  return orders.map((o) => {
+    const product = byId.get(o.productId);
+    if (!product) return o;
+    return {
+      ...o,
+      farmerName: o.farmerName ?? product.farmerName,
+      pickupAddress: o.pickupAddress ?? product.pickupAddress,
+      unitPrice: product.price,
+      total: o.total ?? Math.round(product.price * o.quantity * 100) / 100,
+      coverImageUrl: product.coverImageUrl,
+    };
+  });
+}
+
+async function orderList(fetch: Fetch, arg: string | FetchArgs) {
+  const res = await fetch(arg);
+  if (res.error) return { error: res.error };
+  return { data: await completeOrders(fetch, (res.data as Order[] | null) ?? []) };
 }
 
 export const api = createApi({
@@ -289,23 +329,33 @@ export const api = createApi({
       invalidatesTags: ["Cart", "MyOrders", "Market"],
     }),
 
+    // The order list differs by role: /orders/my (customer), /orders/assigned (driver), /orders (admin).
     myOrders: b.query<Order[], void>({
-      query: () => "/orders/my",
+      queryFn: (_arg, _api, _extra, fetch) => orderList(fetch, "/orders/my"),
       providesTags: ["MyOrders"],
     }),
-    // CONFIRM WITH BACKEND: GET /orders/{id} is not documented (spec §10 Q2).
     getOrder: b.query<Order, number>({
-      query: (id) => `/orders/${id}`,
-      providesTags: ["MyOrders"],
+      queryFn: async (id, _api, _extra, fetch) => {
+        const res = await fetch(`/orders/${id}`);
+        if (res.error) return { error: res.error };
+        return { data: (await completeOrders(fetch, [res.data as Order]))[0] };
+      },
+      providesTags: ["MyOrders", "Jobs", "AdminOrders"],
+    }),
+    // The product on an order, read from the real API (the marketplace's own product pages are
+    // still on placeholder data, so they keep using getProduct).
+    orderProduct: b.query<Product, number>({
+      query: (id) => `/products/${id}`,
+      providesTags: ["Product"],
     }),
 
     // ───────── Driver jobs (spec §3.7) ─────────
     assignedOrders: b.query<Order[], void>({
-      query: () => "/orders/assigned",
+      queryFn: (_arg, _api, _extra, fetch) => orderList(fetch, "/orders/assigned"),
       providesTags: ["Jobs"],
     }),
     unassignedOrders: b.query<Order[], void>({
-      query: () => "/orders/unassigned",
+      queryFn: (_arg, _api, _extra, fetch) => orderList(fetch, "/orders/unassigned"),
       providesTags: ["Jobs"],
     }),
     assignOrder: b.mutation<Order, number>({
@@ -534,17 +584,19 @@ export const api = createApi({
     }),
     listOrdersAdmin: b.query<(Order & { total: number })[], OrderStatus | void>(
       {
-        query: (status) => ({
-          url: "/orders",
-          params: status ? { status } : undefined,
-        }),
+        queryFn: async (status, _api, _extra, fetch) => {
+          const res = await orderList(fetch, { url: "/orders", params: status ? { status } : undefined });
+          if (res.error) return { error: res.error };
+          return { data: res.data.map((o) => ({ ...o, total: o.total ?? 0 })) };
+        },
         providesTags: ["AdminOrders"],
       },
     ),
-    // Real API: PATCH /orders/{id}/assign?driverId= and PATCH /orders/{id}/status (admin rules).
+    // An admin assigning a driver must send driverId as a query param (a driver taking a job
+    // for themselves sends none; see assignOrder).
     adminAssignOrder: b.mutation<Order, { id: number; driverId: number }>({
       query: ({ id, driverId }) => ({
-        url: `/__admin/orders/${id}/assign`,
+        url: `/orders/${id}/assign`,
         method: "PATCH",
         params: { driverId },
       }),
@@ -552,7 +604,7 @@ export const api = createApi({
     }),
     adminOrderStatus: b.mutation<Order, { id: number; status: OrderStatus }>({
       query: ({ id, status }) => ({
-        url: `/__admin/orders/${id}/status`,
+        url: `/orders/${id}/status`,
         method: "PATCH",
         params: { status },
       }),
@@ -632,6 +684,7 @@ export const {
   useConfirmCheckoutMutation,
   useMyOrdersQuery,
   useGetOrderQuery,
+  useOrderProductQuery,
   useAssignedOrdersQuery,
   useUnassignedOrdersQuery,
   useAssignOrderMutation,

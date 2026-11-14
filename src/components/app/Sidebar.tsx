@@ -10,8 +10,6 @@ import { NAV, ROLE_META, SOON } from "@/lib/navigation";
 import { stockState, type MockRole } from "@/lib/types/api";
 import { cn } from "@/lib/cn";
 import { useApp } from "./AppState";
-import { LIVE_API } from "@/lib/api/farmnomad";
-import { RoleSwitcher } from "./RoleSwitcher";
 import { Avatar, IconButton, Kbd } from "./ui";
 
 /** Re-exported for older imports: the current role's nav. */
@@ -117,8 +115,6 @@ export function Sidebar({ mobile = false }: { mobile?: boolean }) {
       </nav>
 
       <div className="mt-auto grid gap-1 px-2.5 pb-3">
-        {/* Sample data only. On the real API the role comes from the account. */}
-        {!LIVE_API && <RoleSwitcher collapsed={collapsed} />}
         <Link
           href="/"
           className={cn("flex h-8 items-center gap-2.5 rounded-[7px] px-2 text-app-muted transition-colors hover:bg-app-hover hover:text-app-text", collapsed && "justify-center px-0")}

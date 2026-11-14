@@ -82,10 +82,14 @@ export interface Order {
   paymentStatus: PaymentStatus;
   createdAt: string;
   updatedAt?: string;
-  // CONFIRM WITH BACKEND: drivers need both ends of the run. The mock fills these in.
+  // Not on the API's order. The first group is filled in from the order's product (see
+  // completeOrders in api/farmnomad.ts); the API has no source yet for the last two.
   pickupAddress?: string;
-  deliveryAddress?: string;
   farmerName?: string;
+  unitPrice?: number;
+  total?: number;
+  coverImageUrl?: string;
+  deliveryAddress?: string;
   donationId?: number;
 }
 
