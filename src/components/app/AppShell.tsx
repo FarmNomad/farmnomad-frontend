@@ -6,9 +6,11 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Toaster } from "sonner";
 import { Bell, Check, HandHeart, List, Package, Receipt, ShoppingBagOpen } from "@phosphor-icons/react/dist/ssr";
-import { useGetCartQuery, useMarkNotificationReadMutation, useMyNotificationsQuery } from "@/lib/api/farmnomad";
+import { useGetCartQuery, useMarkNotificationReadMutation, useMeQuery, useMyNotificationsQuery } from "@/lib/api/farmnomad";
+import { getSession } from "@/lib/auth/session";
 import { HOME, NAV, ROLE_META, allNav, canOpen } from "@/lib/navigation";
 import { cn } from "@/lib/cn";
+import { ProfileBanner } from "@/components/profile/gates";
 import { AppState, useApp } from "./AppState";
 import { CommandMenu } from "./CommandMenu";
 import { ProductSheet } from "./ProductSheet";
@@ -33,10 +35,21 @@ export function AppShell({ children }: { children: ReactNode }) {
 }
 
 function Frame({ children }: { children: ReactNode }) {
-  const { role, theme, resolvedDark, mobileNav, setMobileNav } = useApp();
+  const { role, setRole, theme, resolvedDark, mobileNav, setMobileNav } = useApp();
   const path = usePathname();
   const router = useRouter();
   useShortcuts();
+
+  // These pages need a session. Without one, go to log in. With one, GET /users/me says who this
+  // is, and their role decides which pages they get (the saved role is only a first guess).
+  const [signedIn] = useState(() => !!getSession());
+  const { data: me } = useMeQuery(undefined, { skip: !signedIn });
+  useEffect(() => {
+    if (!signedIn) router.replace("/login");
+  }, [signedIn, router]);
+  useEffect(() => {
+    if (me && me.role in HOME && me.role !== role) setRole(me.role);
+  }, [me, role, setRole]);
 
   useEffect(() => {
     setMobileNav(false);
@@ -46,8 +59,10 @@ function Frame({ children }: { children: ReactNode }) {
   const blocked = !canOpen(role, path);
   const tabs = role === "CUSTOMER" || role === "DRIVER";
   useEffect(() => {
-    if (blocked) router.replace(HOME[role]);
-  }, [blocked, role, router]);
+    if (blocked && signedIn) router.replace(HOME[role]);
+  }, [blocked, role, router, signedIn]);
+
+  if (!signedIn) return <div className="fn-app h-[100dvh]" aria-busy="true" />;
 
   return (
     <div className="fn-app flex h-[100dvh] overflow-hidden" data-theme={theme === "system" ? undefined : theme}>
@@ -75,7 +90,13 @@ function Frame({ children }: { children: ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
-        <main className={cn("min-h-0 flex-1 overflow-y-auto", tabs && "pb-16 md:pb-0")}>{blocked ? null : children}</main>
+        <main className={cn("min-h-0 flex-1 overflow-y-auto", tabs && "pb-16 md:pb-0")}>{blocked ? null : (
+            <>
+              {path.startsWith("/dashboard") && <ProfileBanner />}
+              {children}
+            </>
+          )}
+        </main>
         {tabs && <TabBar />}
       </div>
 

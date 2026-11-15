@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, ChatsCircle, CheckCircle, HandTap, MapTrifold, Package } from "@phosphor-icons/react/dist/ssr";
-import { useGetOrderQuery, useGetProductQuery } from "@/lib/api/farmnomad";
+import { useGetOrderQuery, useOrderProductQuery } from "@/lib/api/farmnomad";
 import { DonationTag, MapsLink, Route, nextStep, useJobActions } from "@/components/app/driver/parts";
 import { ORDER_FLOW, statusMeta } from "@/components/app/orderMeta";
 import { Button, EmptyState, Pill, Skeleton, orderRef, relDay, time } from "@/components/app/ui";
@@ -16,7 +16,7 @@ const STEPS: Record<string, string> = { PENDING: "Waiting for a driver", ASSIGNE
 export default function JobPage() {
   const { orderId } = useParams<{ orderId: string }>();
   const { data: o, isLoading, isError } = useGetOrderQuery(Number(orderId));
-  const { data: p } = useGetProductQuery(o?.productId ?? 0, { skip: !o });
+  const { data: p } = useOrderProductQuery(o?.productId ?? 0, { skip: !o });
   const { advance, busy } = useJobActions();
 
   if (isLoading)

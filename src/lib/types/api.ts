@@ -17,8 +17,38 @@ export interface User {
   postcode?: string | null;
   country?: string | null;
   profilePictureUrl?: string | null;
-  /** CONFIRM WITH BACKEND: not in the documented user shape; the admin list uses it for "joined". */
+  /** False until the email address has been verified. */
+  active?: boolean;
   createdAt?: string;
+}
+
+/** POST /auth/login and /auth/refresh. Refresh rotates the refresh token, so store both each time. */
+export interface AuthTokens {
+  token: string;
+  refreshToken: string;
+  userId?: number;
+  role?: Role;
+  fullName?: string;
+  message?: string | null;
+}
+
+/** POST /auth/register. ADMIN cannot self-register. */
+export interface RegisterInput {
+  fullName: string;
+  email: string;
+  password: string;
+  phoneNumber?: string;
+  address?: string;
+  city?: string;
+  postcode?: string;
+  country?: string;
+  profilePictureUrl?: string;
+  role: Exclude<Role, "ADMIN">;
+}
+
+/** The auth routes that only confirm something happened. */
+export interface ApiMessage {
+  message?: string | null;
 }
 
 export interface Product {
@@ -52,10 +82,14 @@ export interface Order {
   paymentStatus: PaymentStatus;
   createdAt: string;
   updatedAt?: string;
-  // CONFIRM WITH BACKEND: drivers need both ends of the run. The mock fills these in.
+  // Not on the API's order. The first group is filled in from the order's product (see
+  // completeOrders in api/farmnomad.ts); the API has no source yet for the last two.
   pickupAddress?: string;
-  deliveryAddress?: string;
   farmerName?: string;
+  unitPrice?: number;
+  total?: number;
+  coverImageUrl?: string;
+  deliveryAddress?: string;
   donationId?: number;
 }
 
@@ -85,9 +119,15 @@ export interface Notification {
 
 export const PRODUCT_CATEGORIES = ["Vegetables", "Fruit", "Grain", "Dairy", "Meat", "Other"] as const;
 
-/** Product input as the form collects it. The real API takes multipart; see api/farmnomad.ts. */
+/** Product fields as the form collects them. */
 export type ProductInput = Pick<Product, "name" | "price" | "quantityAvailable"> &
   Partial<Pick<Product, "description" | "category" | "bestBeforeDate" | "pickupAddress" | "tags" | "coverImageUrl" | "imageUrls">>;
+
+/**
+ * What create and update send. The real API takes multipart: newly picked photos travel as files
+ * (`coverImage` is the cover, `images` the rest). The URL fields are only used by the sample data.
+ */
+export type ProductWrite = ProductInput & { coverImage?: File; images?: File[] };
 
 // ─── UI-derived helpers (not part of the API) ───
 export type StockState = "active" | "low" | "expiring" | "expired" | "out";
@@ -170,7 +210,9 @@ export interface MealOrder {
 // ─── R2: donations, organisations, messages (spec §2, §3.9–3.12) ───
 export type VerificationLevel = "UNVERIFIED" | "PENDING" | "VERIFIED";
 /** CONFIRM WITH BACKEND: spec types status as a plain string; these are the values the UI expects. */
-export type DonationStatus = "PENDING" | "CLAIMED" | "IN_DELIVERY" | "DELIVERED";
+// The API sends PENDING, CLAIMED, REQUESTED, REJECTED and CANCELLED. IN_DELIVERY and DELIVERED
+// are kept for when a claimed donation is tracked through its delivery order.
+export type DonationStatus = "PENDING" | "CLAIMED" | "REQUESTED" | "REJECTED" | "CANCELLED" | "IN_DELIVERY" | "DELIVERED";
 
 export interface Donation {
   id: number;

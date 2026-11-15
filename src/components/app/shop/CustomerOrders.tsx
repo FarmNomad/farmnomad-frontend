@@ -5,7 +5,7 @@ import Link from "next/link";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { CaretRight, Receipt } from "@phosphor-icons/react/dist/ssr";
-import { useListProductsQuery, useMyOrdersQuery } from "@/lib/api/farmnomad";
+import { useMyOrdersQuery } from "@/lib/api/farmnomad";
 import { PageHeader } from "@/components/app/PageHeader";
 import { paymentMeta, statusMeta } from "@/components/app/orderMeta";
 import { Button, EmptyState, Pill, Skeleton, orderRef, relDay, time } from "@/components/app/ui";
@@ -22,7 +22,6 @@ const ACTIVE = ["PENDING", "ASSIGNED", "IN_TRANSIT"];
 /** Customer's orders (spec §7.9): status tabs, then a row per order linking to tracking. */
 export function CustomerOrders() {
   const { data, isLoading } = useMyOrdersQuery();
-  const { data: products } = useListProductsQuery();
   const [tab, setTab] = useState<(typeof TABS)[number][0]>("all");
 
   const rows = useMemo(
@@ -58,12 +57,11 @@ export function CustomerOrders() {
           <ul className="grid gap-2">
             {rows.map((o) => {
               const m = statusMeta[o.status];
-              const p = products?.find((x) => x.id === o.productId);
               return (
                 <li key={o.id}>
                   <Link href={`/orders/${o.id}`} className="group flex items-center gap-4 rounded-xl p-3 pr-4 shadow-[0_0_0_1px_var(--a-line)] transition-colors hover:bg-app-hover">
                     <span className="grid size-12 shrink-0 place-items-center rounded-lg bg-app-hover">
-                      {p?.coverImageUrl && <Image src={p.coverImageUrl} alt="" width={72} height={72} className="size-10 object-contain" />}
+                      {o.coverImageUrl && <Image src={o.coverImageUrl} alt="" width={72} height={72} className="size-10 object-contain" />}
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium">

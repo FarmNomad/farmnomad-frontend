@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, ChatsCircle, CheckCircle, MapTrifold, Package, Truck } from "@phosphor-icons/react/dist/ssr";
-import { useAssignedOrdersQuery, useGetProductQuery, useMeQuery, useUnassignedOrdersQuery } from "@/lib/api/farmnomad";
+import { ArrowRight, ChatsCircle, CheckCircle, MapTrifold, Package, Truck, Coins } from "@phosphor-icons/react/dist/ssr";
+import { useAssignedOrdersQuery, useGetEarningsSummaryQuery, useOrderProductQuery, useMeQuery, useUnassignedOrdersQuery } from "@/lib/api/farmnomad";
+import { formatPence } from "@/lib/types/earnings";
 import type { Order } from "@/lib/types/api";
 import { DonationTag, JobRow, MapsLink, Route, nextStep, useJobActions } from "@/components/app/driver/parts";
 import { statusMeta } from "@/components/app/orderMeta";
@@ -14,6 +15,7 @@ const isToday = (iso?: string) => !!iso && new Date(iso).toDateString() === new 
 /** Driver home (spec §7.4 /dashboard/driver): the job in hand, what's next, and work nearby. */
 export default function DriverDashboard() {
   const { data: me } = useMeQuery();
+  const { data: earnings } = useGetEarningsSummaryQuery();
   const { data: mine, isLoading } = useAssignedOrdersQuery(undefined, { pollingInterval: 15000 });
   const { data: open } = useUnassignedOrdersQuery(undefined, { pollingInterval: 15000 });
 
@@ -33,10 +35,11 @@ export default function DriverDashboard() {
         </h1>
       </div>
 
-      <dl className="grid grid-cols-3 gap-2 sm:gap-3">
+      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
         <Stat label="Active" value={active.length} icon={Truck} loading={isLoading} />
         <Stat label="Delivered today" value={doneToday.length} icon={CheckCircle} loading={isLoading} />
         <Stat label="Waiting nearby" value={open?.length ?? 0} icon={MapTrifold} loading={!open} href="/jobs?tab=available" />
+        <Stat label="Today's earnings" value={earnings ? formatPence(earnings.clearingPence) : "£0.00"} icon={Coins} loading={!earnings} href="/earnings" />
       </dl>
 
       <section className="mt-6" aria-labelledby="now">
@@ -112,7 +115,7 @@ export default function DriverDashboard() {
   );
 }
 
-function Stat({ label, value, icon: Icon, loading, href }: { label: string; value: number; icon: typeof Truck; loading?: boolean; href?: string }) {
+function Stat({ label, value, icon: Icon, loading, href }: { label: string; value: number | string; icon: typeof Truck; loading?: boolean; href?: string }) {
   const body = (
     <>
       <dt className="flex items-center gap-1.5 text-ui-sm text-app-muted">
@@ -134,7 +137,7 @@ function Stat({ label, value, icon: Icon, loading, href }: { label: string; valu
 /** The job in hand: big, glanceable, one obvious next action. */
 function CurrentJob({ o }: { o: Order }) {
   const { advance, busy } = useJobActions();
-  const { data: p } = useGetProductQuery(o.productId);
+  const { data: p } = useOrderProductQuery(o.productId);
   const step = nextStep(o);
   const m = statusMeta[o.status];
   const toFarm = o.status === "ASSIGNED";

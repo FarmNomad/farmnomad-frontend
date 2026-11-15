@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowClockwise, ArrowLeft, ChatsCircle, MapPin, Receipt } from "@phosphor-icons/react/dist/ssr";
-import { useGetOrderQuery, useGetProductQuery, useMeQuery } from "@/lib/api/farmnomad";
+import { useGetOrderQuery, useOrderProductQuery, useMeQuery } from "@/lib/api/farmnomad";
 import { ORDER_FLOW, paymentMeta, statusMeta } from "@/components/app/orderMeta";
 import { useCart } from "@/components/app/shop/useCart";
 import { Avatar, Button, EmptyState, Pill, Skeleton, gbp, orderRef, relDay, time } from "@/components/app/ui";
@@ -22,7 +22,7 @@ const copy: Record<string, string> = {
 export default function OrderDetailPage() {
   const { orderId } = useParams<{ orderId: string }>();
   const { data: o, isLoading, isError } = useGetOrderQuery(Number(orderId));
-  const { data: p } = useGetProductQuery(o?.productId ?? 0, { skip: !o });
+  const { data: p } = useOrderProductQuery(o?.productId ?? 0, { skip: !o });
   const { data: me } = useMeQuery();
   const { addToCart } = useCart();
 

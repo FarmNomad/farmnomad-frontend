@@ -1,5 +1,8 @@
 "use client";
 
+import { useProfileGate } from "@/lib/hooks/useProfileGate";
+import { PROFILE_META, missingFieldsText } from "@/lib/types/profile";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { ArrowRight, ArrowSquareOut, CheckCircle, Gift, HandTap, NavigationArrow, Package, Storefront, Truck } from "@phosphor-icons/react/dist/ssr";
@@ -26,7 +29,18 @@ export function nextStep(o: Order) {
 export function useJobActions() {
   const [assign, a] = useAssignOrderMutation();
   const [status, s] = useUpdateOrderStatusMutation();
+  const gate = useProfileGate();
+  const router = useRouter();
   async function advance(o: Order) {
+    // Vehicle and insurance details come first: farms need to know what is collecting from them.
+    if (o.status === "PENDING" && gate.role === "DRIVER" && gate.needsProfile) {
+      const what = gate.missingFields.length ? missingFieldsText("DRIVER", gate.missingFields) : "vehicle details";
+      toast.error("Add your vehicle details first", {
+        description: `We need your ${what} before you can accept jobs.`,
+        action: { label: "Add details", onClick: () => router.push(PROFILE_META.DRIVER.href) },
+      });
+      return;
+    }
     try {
       if (o.status === "PENDING") {
         await assign(o.id).unwrap();

@@ -1,11 +1,13 @@
 import {
   createApi,
-  fetchBaseQuery,
   type BaseQueryFn,
   type FetchArgs,
   type FetchBaseQueryError,
 } from "@reduxjs/toolkit/query/react";
+import { liveBaseQuery } from "./liveBaseQuery";
 import type {
+  ApiMessage,
+  AuthTokens,
   CartItem,
   CheckoutSession,
   Donation,
@@ -19,29 +21,82 @@ import type {
   OrderStatus,
   Organisation,
   Product,
-  ProductInput,
+  ProductWrite,
+  RegisterInput,
   Surplus,
   User,
 } from "@/lib/types/api";
+import type { EarningLine, EarningsSummary, PayoutLine } from "@/lib/types/earnings";
+import type { DriverProfile, Farm, Kitchen, ProfileStatus } from "@/lib/types/profile";
 
 /**
- * One switch between sample data and the Spring Boot API.
- * NEXT_PUBLIC_USE_MOCKS defaults to on. Set it to "false" and NEXT_PUBLIC_API_URL to the backend
- * (e.g. http://localhost:9000/api) and every hook below talks to the real thing.
+ * Where the data comes from.
+ *
+ * The Spring Boot API (NEXT_PUBLIC_API_URL) is the source of truth. Routes listed in LIVE_ROUTES
+ * go to it. A route that has not been integrated yet still answers from temporary placeholder
+ * data (./mock) so its page keeps working; move the route into LIVE_ROUTES when its phase lands,
+ * and delete ./mock once nothing is left on it.
  */
-const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS !== "false";
 
-const realBaseQuery = fetchBaseQuery({
-  baseUrl: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:9000/api",
-  prepareHeaders: (headers) => {
-    const token =
-      typeof window !== "undefined"
-        ? window.localStorage.getItem("fn_token")
-        : null;
-    if (token) headers.set("Authorization", `Bearer ${token}`);
-    return headers;
-  },
-});
+// A route is a method ("*" for any) and a path. Listing the method keeps a phase to exactly what it
+// integrated: the farmer's own products are live, while the marketplace list (GET /products) stays
+// on sample data until the customer side is done.
+const LIVE_ROUTES: [method: string, path: RegExp][] = [
+  // Phase 1: auth and the signed-in user.
+  ["*", /^\/auth\//],
+  ["GET", /^\/users\/me$/],
+  // Phase 2: the farmer's products.
+  ["GET", /^\/products\/my$/],
+  ["POST", /^\/products$/],
+  ["PUT", /^\/products\/\d+$/],
+  ["DELETE", /^\/products\/\d+$/],
+  // Phase 3: orders, and the accounts an admin assigns them to.
+  ["GET", /^\/orders$/],
+  ["GET", /^\/orders\/(my|assigned|unassigned|\d+)$/],
+  ["PATCH", /^\/orders\/\d+\/(assign|status)$/],
+  ["GET", /^\/users$/],
+  ["PUT", /^\/users\/\d+$/],
+  // The profile picture.
+  ["POST", /^\/users\/me\/avatar$/],
+  // Phase 4: surplus, donations and the food groups that claim them.
+  ["GET", /^\/surplus(\/my)?$/],
+  ["POST", /^\/surplus$/],
+  ["POST", /^\/surplus\/(claim|assign)\/\d+$/],
+  ["GET", /^\/donations(\/all|\/my\/farmer|\/my\/organisation)?$/],
+  ["POST", /^\/donations$/],
+  ["PATCH", /^\/donations\/\d+\/(claim|claim-and-order)$/],
+  ["GET", /^\/organisations(\/\d+)?$/],
+  ["POST", /^\/organisations$/],
+  ["PUT", /^\/organisations\/\d+$/],
+  ["PATCH", /^\/organisations\/\d+\/status$/],
+];
+
+// Endpoints whose every request is live, whatever the path. The order endpoints also read the
+// product on each order (GET /products/{id}); that path is otherwise still on placeholder data
+// for the marketplace, so it is switched on here by endpoint rather than by path.
+const LIVE_ENDPOINTS = new Set([
+  "myOrders",
+  "getOrder",
+  "assignedOrders",
+  "unassignedOrders",
+  "listOrdersAdmin",
+  "orderProduct",
+  // Surplus and donations are completed from their product too.
+  "listMySurplus",
+  "listDonations",
+  "myFarmerDonations",
+  "myOrganisationDonations",
+  "allDonationsAdmin",
+  "myOrganisation",
+]);
+
+// Lists the backend has no endpoint for yet. These come back empty, so an account never sees
+// made-up figures as if they were its own. Move a route to LIVE_ROUTES (with its
+// real path) once the backend provides it.
+const NO_BACKEND_YET: [method: string, path: RegExp][] = [
+  ["GET", /^\/orders\/my\/farmer$/], // a farmer's incoming orders
+  ["GET", /^\/analytics\/farmer\/revenue$/], // daily revenue for the dashboard chart
+];
 
 const mockBaseQuery: BaseQueryFn<
   string | FetchArgs,
@@ -61,9 +116,142 @@ const mockBaseQuery: BaseQueryFn<
     : { data: res.data };
 };
 
+const baseQuery: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> = (args, baseApi, extra) => {
+  const path = (typeof args === "string" ? args : args.url).split("?")[0];
+  const method = (typeof args === "string" ? "GET" : (args.method ?? "GET")).toUpperCase();
+  const hit = (routes: [string, RegExp][]) => routes.some(([m, r]) => (m === "*" || m === method) && r.test(path));
+  if (hit(NO_BACKEND_YET)) return { data: [] };
+  const live = hit(LIVE_ROUTES) || LIVE_ENDPOINTS.has(baseApi.endpoint);
+  return live ? liveBaseQuery(args, baseApi, extra) : mockBaseQuery(args, baseApi, extra);
+};
+
+/**
+ * Products are the only multipart resource. On the real API the body is form data: the text
+ * fields, `tags` repeated once per tag, `coverImage` as one file and `images` as files.
+ * No Content-Type is set here; the browser adds it with the multipart boundary.
+ * Photos already on the server are not re-sent (the API takes files, not URLs).
+ */
+function productBody({ coverImage, images, ...fields }: Partial<ProductWrite>): FormData {
+  const fd = new FormData();
+  const text = (k: string, v: string | number | undefined | null) => {
+    if (v !== undefined && v !== null && v !== "") fd.append(k, String(v));
+  };
+  text("name", fields.name);
+  text("description", fields.description);
+  text("price", fields.price);
+  text("quantityAvailable", fields.quantityAvailable); // not "quantity"
+  text("category", fields.category);
+  text("bestBeforeDate", fields.bestBeforeDate);
+  text("pickupAddress", fields.pickupAddress);
+  fields.tags?.forEach((t) => fd.append("tags", t));
+  if (coverImage) fd.append("coverImage", coverImage);
+  images?.forEach((f) => fd.append("images", f));
+  return fd;
+}
+
+type Fetch = (arg: string | FetchArgs) => PromiseLike<{ data?: unknown; error?: FetchBaseQueryError }> | { data?: unknown; error?: FetchBaseQueryError };
+
+/**
+ * The API's order has no farm, pickup address, price or photo on it. Those live on the product,
+ * so each order is completed from its product: farm name, pickup address, unit price, total and
+ * cover photo. A product that has since been deleted simply leaves those blank.
+ * (The delivery address is not available from any endpoint yet.)
+ */
+async function completeOrders(fetch: Fetch, orders: Order[]): Promise<Order[]> {
+  const ids = [...new Set(orders.map((o) => o.productId))];
+  const found = await Promise.all(ids.map((id) => fetch(`/products/${id}`)));
+  const byId = new Map(ids.map((id, i) => [id, found[i].error ? undefined : (found[i].data as Product | undefined)]));
+  return orders.map((o) => {
+    const product = byId.get(o.productId);
+    if (!product) return o;
+    return {
+      ...o,
+      farmerName: o.farmerName ?? product.farmerName,
+      pickupAddress: o.pickupAddress ?? product.pickupAddress,
+      unitPrice: product.price,
+      total: o.total ?? Math.round(product.price * o.quantity * 100) / 100,
+      coverImageUrl: product.coverImageUrl,
+    };
+  });
+}
+
+async function orderList(fetch: Fetch, arg: string | FetchArgs) {
+  const res = await fetch(arg);
+  if (res.error) return { error: res.error };
+  return { data: await completeOrders(fetch, (res.data as Order[] | null) ?? []) };
+}
+
+/** The product behind each row, read once per distinct product. Deleted products are simply absent. */
+async function productsById(fetch: Fetch, ids: number[]): Promise<Map<number, Product>> {
+  const unique = [...new Set(ids)];
+  const found = await Promise.all(unique.map((id) => fetch(`/products/${id}`)));
+  const map = new Map<number, Product>();
+  unique.forEach((id, i) => {
+    if (!found[i].error && found[i].data) map.set(id, found[i].data as Product);
+  });
+  return map;
+}
+
+/**
+ * Donations and a farmer's surplus arrive with only the product's id and name. The photo,
+ * best-before date and pickup address shown on the cards come from the product itself.
+ */
+async function withProductDetails<T extends { productId: number; coverImageUrl?: string; bestBeforeDate?: string; pickupAddress?: string; farmerName?: string }>(
+  fetch: Fetch,
+  arg: string,
+  finish: (row: T) => T = (row) => row,
+) {
+  const res = await fetch(arg);
+  if (res.error) return { error: res.error };
+  const rows = (res.data as T[] | null) ?? [];
+  const products = await productsById(
+    fetch,
+    rows.map((r) => r.productId),
+  );
+  return {
+    data: rows.map((row) => {
+      const p = products.get(row.productId);
+      return finish(p ? { ...row, coverImageUrl: p.coverImageUrl, bestBeforeDate: p.bestBeforeDate, pickupAddress: p.pickupAddress, farmerName: row.farmerName ?? p.farmerName } : row);
+    }),
+  };
+}
+
+/** GET /surplus answers with products (the ones flagged as surplus), so shape them as surplus rows. */
+const surplusFromProduct = (p: Product): Surplus => ({
+  id: p.id,
+  productId: p.id,
+  productName: p.name,
+  quantity: p.quantityAvailable,
+  availableQuantity: p.quantityAvailable,
+  createdAt: p.createdAt,
+  farmerName: p.farmerName,
+  coverImageUrl: p.coverImageUrl,
+  bestBeforeDate: p.bestBeforeDate,
+  pickupAddress: p.pickupAddress,
+});
+
+/** The API's organisation, in the shape the pages use. */
+type ApiOrganisation = { id: number; name: string; type: Organisation["type"]; charityNumber?: string | null; registrationStatus?: string | null; verifiedAt?: string | null; userId?: number; userName?: string | null };
+function toOrganisation(o: ApiOrganisation): Organisation {
+  // CONFIRM WITH BACKEND: the exact registrationStatus values. Anything that reads as approved
+  // counts as verified, anything waiting as pending, and the rest as not verified.
+  const status = (o.registrationStatus ?? "").toUpperCase();
+  const verificationLevel = o.verifiedAt || /VERIF|APPROV|ACTIVE/.test(status) ? (/UNVERIF/.test(status) ? "UNVERIFIED" : "VERIFIED") : /PEND|REVIEW|SUBMIT|NEW/.test(status) ? "PENDING" : "UNVERIFIED";
+  return { id: o.id, name: o.name, type: o.type, charityNumber: o.charityNumber ?? undefined, verificationLevel, userId: o.userId };
+}
+// CONFIRM WITH BACKEND: the values PATCH /organisations/{id}/status accepts.
+const ORG_STATUS: Record<NonNullable<Organisation["verificationLevel"]>, string> = { VERIFIED: "VERIFIED", PENDING: "PENDING", UNVERIFIED: "REJECTED" };
+// There is no "my organisation" endpoint, so its id is remembered after applying.
+const orgKey = (userId: number) => `fn_org_${userId}`;
+const rememberOrg = (o: { id: number; userId?: number }) => {
+  try {
+    if (o.userId) window.localStorage.setItem(orgKey(o.userId), String(o.id));
+  } catch {}
+};
+
 export const api = createApi({
   reducerPath: "api",
-  baseQuery: USE_MOCKS ? mockBaseQuery : realBaseQuery,
+  baseQuery,
   tagTypes: [
     "Product",
     "Order",
@@ -82,6 +270,8 @@ export const api = createApi({
     "Users",
     "AdminOrders",
     "Orgs",
+    "Profile",
+    "Earnings",
   ],
   endpoints: (b) => ({
     me: b.query<User, void>({ query: () => "/users/me", providesTags: ["Me"] }),
@@ -91,21 +281,21 @@ export const api = createApi({
       query: () => "/products/my",
       providesTags: ["Product"],
     }),
-    createProduct: b.mutation<Product, ProductInput>({
-      // The real endpoint takes multipart/form-data; the form layer builds FormData when mocks are off.
-      query: (body) => ({ url: "/products", method: "POST", body }),
+    createProduct: b.mutation<Product, ProductWrite>({
+      query: (input) => ({ url: "/products", method: "POST", body: productBody(input) }),
       invalidatesTags: ["Product"],
     }),
-    updateProduct: b.mutation<Product, { id: number } & Partial<ProductInput>>({
+    updateProduct: b.mutation<Product, { id: number } & Partial<ProductWrite>>({
       // FARMER (own) or ADMIN (any).
-      query: ({ id, ...body }) => ({
+      query: ({ id, ...input }) => ({
         url: `/products/${id}`,
         method: "PUT",
-        body,
+        body: productBody(input),
       }),
       invalidatesTags: ["Product", "Market"],
     }),
-    deleteProduct: b.mutation<Product, number>({
+    // The real API answers with an empty body.
+    deleteProduct: b.mutation<Product | null, number>({
       query: (id) => ({ url: `/products/${id}`, method: "DELETE" }),
       invalidatesTags: ["Product", "Market"],
     }),
@@ -126,7 +316,8 @@ export const api = createApi({
 
     // Surplus (spec §7.10). CONFIRM WITH BACKEND: create endpoint is not documented; this assumes POST /surplus.
     listMySurplus: b.query<Surplus[], void>({
-      query: () => "/surplus/my",
+      // The API doesn't say how much of a listing has been claimed, so all of it counts as available.
+      queryFn: (_arg, _api, _extra, fetch) => withProductDetails<Surplus>(fetch, "/surplus/my", (row) => ({ ...row, availableQuantity: row.availableQuantity ?? row.quantity })),
       providesTags: ["Surplus"],
     }),
     createSurplus: b.mutation<Surplus, { productId: number; quantity: number }>(
@@ -154,20 +345,29 @@ export const api = createApi({
       }),
       invalidatesTags: ["Me"],
     }),
-    changePassword: b.mutation<
-      { ok: boolean },
-      { currentPassword: string; newPassword: string }
-    >({
+    // ───────── Auth (integration brief §2) ─────────
+    changePassword: b.mutation<ApiMessage, { currentPassword: string; newPassword: string }>({
       query: (body) => ({ url: "/auth/change-password", method: "POST", body }),
     }),
-    login: b.mutation<{ token: string }, { email: string; password: string }>({
+    // Returns tokens only. The user and their role come from GET /users/me afterwards.
+    login: b.mutation<AuthTokens, { email: string; password: string }>({
       query: (body) => ({ url: "/auth/login", method: "POST", body }),
     }),
-    forgotPassword: b.mutation<{ ok: boolean }, { email: string }>({
+    // Always 200 with a deliberately vague message (no account enumeration). Show the message as sent.
+    forgotPassword: b.mutation<ApiMessage, { email: string }>({
       query: (body) => ({ url: "/auth/forgot-password", method: "POST", body }),
     }),
-    register: b.mutation<{ ok: boolean }, Record<string, string>>({
+    // The token comes from the link in the reset email.
+    resetPassword: b.mutation<ApiMessage, { token: string; newPassword: string }>({
+      query: (body) => ({ url: "/auth/reset-password", method: "POST", body }),
+    }),
+    // Creates an inactive account and emails a verification link. Returns the user, not a session.
+    register: b.mutation<User, RegisterInput>({
       query: (body) => ({ url: "/auth/register", method: "POST", body }),
+    }),
+    // Ends the session on the server. Sending the refresh token revokes it too.
+    logout: b.mutation<ApiMessage, { refreshToken?: string }>({
+      query: (body) => ({ url: "/auth/logout", method: "POST", body }),
     }),
 
     listProducts: b.query<Product[], void>({
@@ -229,23 +429,33 @@ export const api = createApi({
       invalidatesTags: ["Cart", "MyOrders", "Market"],
     }),
 
+    // The order list differs by role: /orders/my (customer), /orders/assigned (driver), /orders (admin).
     myOrders: b.query<Order[], void>({
-      query: () => "/orders/my",
+      queryFn: (_arg, _api, _extra, fetch) => orderList(fetch, "/orders/my"),
       providesTags: ["MyOrders"],
     }),
-    // CONFIRM WITH BACKEND: GET /orders/{id} is not documented (spec §10 Q2).
     getOrder: b.query<Order, number>({
-      query: (id) => `/orders/${id}`,
-      providesTags: ["MyOrders"],
+      queryFn: async (id, _api, _extra, fetch) => {
+        const res = await fetch(`/orders/${id}`);
+        if (res.error) return { error: res.error };
+        return { data: (await completeOrders(fetch, [res.data as Order]))[0] };
+      },
+      providesTags: ["MyOrders", "Jobs", "AdminOrders"],
+    }),
+    // The product on an order, read from the real API (the marketplace's own product pages are
+    // still on placeholder data, so they keep using getProduct).
+    orderProduct: b.query<Product, number>({
+      query: (id) => `/products/${id}`,
+      providesTags: ["Product"],
     }),
 
     // ───────── Driver jobs (spec §3.7) ─────────
     assignedOrders: b.query<Order[], void>({
-      query: () => "/orders/assigned",
+      queryFn: (_arg, _api, _extra, fetch) => orderList(fetch, "/orders/assigned"),
       providesTags: ["Jobs"],
     }),
     unassignedOrders: b.query<Order[], void>({
-      query: () => "/orders/unassigned",
+      queryFn: (_arg, _api, _extra, fetch) => orderList(fetch, "/orders/unassigned"),
       providesTags: ["Jobs"],
     }),
     assignOrder: b.mutation<Order, number>({
@@ -270,22 +480,23 @@ export const api = createApi({
 
     // ───────── Donations (spec §3.9) ─────────
     listDonations: b.query<Donation[], void>({
-      query: () => "/donations",
+      queryFn: (_arg, _api, _extra, fetch) => withProductDetails<Donation>(fetch, "/donations"),
       providesTags: ["Donation"],
     }),
     myFarmerDonations: b.query<Donation[], void>({
-      query: () => "/donations/my/farmer",
+      queryFn: (_arg, _api, _extra, fetch) => withProductDetails<Donation>(fetch, "/donations/my/farmer"),
       providesTags: ["Donation"],
     }),
     myOrganisationDonations: b.query<Donation[], void>({
-      query: () => "/donations/my/organisation",
+      queryFn: (_arg, _api, _extra, fetch) => withProductDetails<Donation>(fetch, "/donations/my/organisation"),
       providesTags: ["Donation"],
     }),
     createDonation: b.mutation<
       Donation,
       { productId: number; quantity: number; note?: string }
     >({
-      query: (body) => ({ url: "/donations", method: "POST", body }),
+      // The API takes the product and the quantity only; a note has nowhere to go yet.
+      query: ({ productId, quantity }) => ({ url: "/donations", method: "POST", body: { productId, quantity } }),
       invalidatesTags: ["Donation", "Product"],
     }),
     // organisationId is only required when the caller is ADMIN; omitted for ORGANISATION.
@@ -302,9 +513,11 @@ export const api = createApi({
     // ───────── Surplus browse (spec §3.10) ─────────
     listSurplus: b.query<Surplus[], void>({
       query: () => "/surplus",
+      transformResponse: (products: Product[] | null) => (products ?? []).map(surplusFromProduct),
       providesTags: ["Surplus"],
     }),
-    claimSurplus: b.mutation<Surplus, number>({
+    // The product id goes in the path and there is no body. The API answers with an empty body.
+    claimSurplus: b.mutation<Surplus | null, number>({
       query: (productId) => ({
         url: `/surplus/claim/${productId}`,
         method: "POST",
@@ -313,27 +526,51 @@ export const api = createApi({
     }),
 
     // ───────── Organisations (spec §3.11). CONFIRM WITH BACKEND: GET /organisations/my is assumed. ─────────
+    // There is no GET /organisations/my. The signed-in user's organisation is found by the id
+    // remembered when they applied, or failing that by looking for theirs in the list.
+    // Null means none yet, and the page shows the apply form.
     myOrganisation: b.query<Organisation | null, void>({
-      query: () => "/organisations/my",
-      // No organisation yet → 404, and the page shows the apply form.
+      queryFn: async (_arg, _api, _extra, fetch) => {
+        const me = await fetch("/users/me");
+        if (me.error) return { error: me.error };
+        const userId = (me.data as User).id;
+        let saved = 0;
+        try {
+          saved = Number(window.localStorage.getItem(orgKey(userId))) || 0;
+        } catch {}
+        if (saved) {
+          const one = await fetch(`/organisations/${saved}`);
+          if (!one.error && one.data) return { data: toOrganisation(one.data as ApiOrganisation) };
+        }
+        const all = await fetch("/organisations");
+        const mine = all.error ? undefined : ((all.data as ApiOrganisation[] | null) ?? []).find((o) => o.userId === userId);
+        if (mine) rememberOrg(mine);
+        return { data: mine ? toOrganisation(mine) : null };
+      },
       providesTags: ["Org"],
     }),
     createOrganisation: b.mutation<
       Organisation,
       Pick<Organisation, "name" | "type" | "charityNumber" | "description">
     >({
-      query: (body) => ({ url: "/organisations", method: "POST", body }),
-      invalidatesTags: ["Org"],
+      // The API takes name, type and charityNumber. The owner comes from the session.
+      query: ({ name, type, charityNumber }) => ({ url: "/organisations", method: "POST", body: { name, type, charityNumber } }),
+      transformResponse: (o: ApiOrganisation) => {
+        rememberOrg(o);
+        return toOrganisation(o);
+      },
+      invalidatesTags: ["Org", "Orgs"],
     }),
     updateOrganisation: b.mutation<
       Organisation,
       { id: number } & Partial<Organisation>
     >({
-      query: ({ id, ...body }) => ({
+      query: ({ id, name, type, charityNumber }) => ({
         url: `/organisations/${id}`,
         method: "PUT",
-        body,
+        body: { name, type, charityNumber },
       }),
+      transformResponse: toOrganisation,
       invalidatesTags: ["Org", "Orgs"],
     }),
     mockResetOrganisation: b.mutation<{ ok: boolean }, void>({
@@ -449,7 +686,7 @@ export const api = createApi({
       invalidatesTags: ["Users", "Me", "AdminOrders"],
     }),
     // Always 200 with a deliberately vague message (no account enumeration). Show the message as sent.
-    resendVerification: b.mutation<{ message?: string }, { email: string }>({
+    resendVerification: b.mutation<ApiMessage, { email: string }>({
       query: (body) => ({
         url: "/auth/resend-verification",
         method: "POST",
@@ -457,7 +694,7 @@ export const api = createApi({
       }),
     }),
     // The token comes from the link in the verification email. Returns a message, not a session: the user still logs in.
-    verifyEmail: b.mutation<{ message?: string }, { token: string }>({
+    verifyEmail: b.mutation<ApiMessage, { token: string }>({
       query: (body) => ({ url: "/auth/verify-email", method: "POST", body }),
     }),
     allMealsAdmin: b.query<Meal[], void>({
@@ -474,17 +711,19 @@ export const api = createApi({
     }),
     listOrdersAdmin: b.query<(Order & { total: number })[], OrderStatus | void>(
       {
-        query: (status) => ({
-          url: "/orders",
-          params: status ? { status } : undefined,
-        }),
+        queryFn: async (status, _api, _extra, fetch) => {
+          const res = await orderList(fetch, { url: "/orders", params: status ? { status } : undefined });
+          if (res.error) return { error: res.error };
+          return { data: res.data.map((o) => ({ ...o, total: o.total ?? 0 })) };
+        },
         providesTags: ["AdminOrders"],
       },
     ),
-    // Real API: PATCH /orders/{id}/assign?driverId= and PATCH /orders/{id}/status (admin rules).
+    // An admin assigning a driver must send driverId as a query param (a driver taking a job
+    // for themselves sends none; see assignOrder).
     adminAssignOrder: b.mutation<Order, { id: number; driverId: number }>({
       query: ({ id, driverId }) => ({
-        url: `/__admin/orders/${id}/assign`,
+        url: `/orders/${id}/assign`,
         method: "PATCH",
         params: { driverId },
       }),
@@ -492,7 +731,7 @@ export const api = createApi({
     }),
     adminOrderStatus: b.mutation<Order, { id: number; status: OrderStatus }>({
       query: ({ id, status }) => ({
-        url: `/__admin/orders/${id}/status`,
+        url: `/orders/${id}/status`,
         method: "PATCH",
         params: { status },
       }),
@@ -500,9 +739,10 @@ export const api = createApi({
     }),
     listOrganisations: b.query<Organisation[], void>({
       query: () => "/organisations",
+      transformResponse: (list: ApiOrganisation[] | null) => (list ?? []).map(toOrganisation),
       providesTags: ["Orgs"],
     }),
-    // Real API: PUT /organisations/{id} { verificationLevel } (field name to confirm).
+    // An admin approving or turning down a food group: PATCH /organisations/{id}/status { status }.
     verifyOrganisation: b.mutation<
       Organisation,
       {
@@ -511,18 +751,20 @@ export const api = createApi({
       }
     >({
       query: ({ id, verificationLevel }) => ({
-        url: `/__admin/organisations/${id}`,
+        url: `/organisations/${id}/status`,
         method: "PATCH",
-        body: { verificationLevel },
+        body: { status: ORG_STATUS[verificationLevel] },
       }),
+      transformResponse: toOrganisation,
       invalidatesTags: ["Orgs", "Org", "Notification"],
     }),
     allDonationsAdmin: b.query<Donation[], void>({
-      query: () => "/donations/all",
+      queryFn: (_arg, _api, _extra, fetch) => withProductDetails<Donation>(fetch, "/donations/all"),
       providesTags: ["Donation"],
     }),
+    // Admin only. organisationUserId is the food group's user id, not the organisation's id.
     assignSurplus: b.mutation<
-      Surplus & { assignedTo: string },
+      (Surplus & { assignedTo?: string }) | null,
       { productId: number; organisationUserId: number }
     >({
       query: ({ productId, organisationUserId }) => ({
@@ -533,6 +775,68 @@ export const api = createApi({
       invalidatesTags: ["Surplus"],
     }),
 
+    // ───────── Profile picture (multipart; the file field must be named exactly "file") ─────────
+    uploadAvatar: b.mutation<User, File>({
+      query: (file) => {
+        const body = new FormData();
+        body.append("file", file);
+        return { url: "/users/me/avatar", method: "POST", body };
+      },
+      invalidatesTags: ["Me", "Users"],
+    }),
+
+    // ───────── Role profiles: farm, vehicle and kitchen details (role profiles spec §7) ─────────
+    // The owner is never sent; the backend takes it from the session.
+    getMyProfile: b.query<ProfileStatus, void>({
+      query: () => "/profile/me",
+      providesTags: ["Profile"],
+    }),
+    createFarm: b.mutation<Farm, Partial<Farm>>({
+      query: (body) => ({ url: "/farms", method: "POST", body }),
+      invalidatesTags: ["Profile"],
+    }),
+    updateFarm: b.mutation<Farm, { id: number; body: Partial<Farm> }>({
+      query: ({ id, body }) => ({ url: `/farms/${id}`, method: "PUT", body }),
+      invalidatesTags: ["Profile"],
+    }),
+    createDriverProfile: b.mutation<DriverProfile, Partial<DriverProfile>>({
+      query: (body) => ({ url: "/drivers/profile", method: "POST", body }),
+      invalidatesTags: ["Profile"],
+    }),
+    updateDriverProfile: b.mutation<DriverProfile, Partial<DriverProfile>>({
+      query: (body) => ({ url: "/drivers/profile", method: "PUT", body }),
+      invalidatesTags: ["Profile"],
+    }),
+    createKitchen: b.mutation<Kitchen, Partial<Kitchen>>({
+      query: (body) => ({ url: "/kitchens", method: "POST", body }),
+      invalidatesTags: ["Profile"],
+    }),
+    updateKitchen: b.mutation<Kitchen, { id: number; body: Partial<Kitchen> }>({
+      query: ({ id, body }) => ({ url: `/kitchens/${id}`, method: "PUT", body }),
+      invalidatesTags: ["Profile"],
+    }),
+
+    // ───────── Earnings and payouts (payouts spec §5) ─────────
+    getEarningsSummary: b.query<EarningsSummary, void>({
+      query: () => "/earnings",
+      providesTags: ["Earnings"],
+    }),
+    getEarningTransactions: b.query<EarningLine[], { month?: string } | void>({
+      query: (arg) => ({ url: "/earnings/transactions", params: arg ?? undefined }),
+      providesTags: ["Earnings"],
+    }),
+    getPayoutHistory: b.query<PayoutLine[], void>({
+      query: () => "/earnings/payouts",
+      providesTags: ["Earnings"],
+    }),
+    // Mutations, not queries: each call mints a single-use, short-lived Stripe link. Never cache one.
+    startConnectOnboarding: b.mutation<{ url: string }, void>({
+      query: () => ({ url: "/connect/onboard", method: "POST" }),
+    }),
+    getConnectDashboardLink: b.mutation<{ url: string }, void>({
+      query: () => ({ url: "/connect/dashboard-link", method: "POST" }),
+    }),
+
     // CONFIRM WITH BACKEND: revenue analytics endpoint is not documented yet.
     farmerRevenue: b.query<{ date: string; value: number }[], void>({
       query: () => "/analytics/farmer/revenue",
@@ -541,7 +845,24 @@ export const api = createApi({
 });
 
 export const {
+  useUploadAvatarMutation,
+  useGetMyProfileQuery,
+  useLazyGetMyProfileQuery,
+  useCreateFarmMutation,
+  useUpdateFarmMutation,
+  useCreateDriverProfileMutation,
+  useUpdateDriverProfileMutation,
+  useCreateKitchenMutation,
+  useUpdateKitchenMutation,
+  useGetEarningsSummaryQuery,
+  useGetEarningTransactionsQuery,
+  useGetPayoutHistoryQuery,
+  useStartConnectOnboardingMutation,
+  useGetConnectDashboardLinkMutation,
   useMeQuery,
+  useLazyMeQuery,
+  useResetPasswordMutation,
+  useLogoutMutation,
   useListMyProductsQuery,
   useCreateProductMutation,
   useUpdateProductMutation,
@@ -569,6 +890,7 @@ export const {
   useConfirmCheckoutMutation,
   useMyOrdersQuery,
   useGetOrderQuery,
+  useOrderProductQuery,
   useAssignedOrdersQuery,
   useUnassignedOrdersQuery,
   useAssignOrderMutation,

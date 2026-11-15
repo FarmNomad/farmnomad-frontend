@@ -26,6 +26,11 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: "https",
+        hostname: "farmnomad-backend.onrender.com",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
         hostname: "res.cloudinary.com",
       },
       {

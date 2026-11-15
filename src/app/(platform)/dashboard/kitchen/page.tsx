@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { ArrowRight, Plant, Plus, Warning } from "@phosphor-icons/react/dist/ssr";
-import { useKitchenMealOrdersQuery, useListSurplusQuery, useMeQuery, useMyMealsQuery } from "@/lib/api/farmnomad";
+import { useKitchenMealOrdersQuery, useListSurplusQuery, useMeQuery, useMyMealsQuery, useGetEarningsSummaryQuery } from "@/lib/api/farmnomad";
+import { formatPence } from "@/lib/types/earnings";
 import { PageHeader } from "@/components/app/PageHeader";
 import { OrderTicket } from "@/components/app/meals/OrderCard";
 import { MealArt } from "@/components/app/meals/meta";
@@ -14,6 +15,7 @@ const today = (iso: string) => new Date(iso).toDateString() === new Date().toDat
 /** Kitchen home (spec §7.4 /dashboard/kitchen): the pass, the menu, and ingredients from local farms. */
 export default function KitchenDashboard() {
   const { data: me } = useMeQuery();
+  const { data: earnings } = useGetEarningsSummaryQuery();
   const { data: orders } = useKitchenMealOrdersQuery(undefined, { pollingInterval: 10000 });
   const { data: menu } = useMyMealsQuery();
   // Kitchens see cheap surplus as well; good for tomorrow's specials.
@@ -30,7 +32,7 @@ export default function KitchenDashboard() {
     <div className="mx-auto max-w-[1100px] pb-16">
       <PageHeader
         title={`${hour < 12 ? "Morning" : hour < 18 ? "Afternoon" : "Evening"}, ${me?.fullName.split(" ")[0] ?? "chef"}`}
-        description="Fishergate Kitchen on NomadEat"
+        description="Your kitchen on NomadEat"
         actions={
           <Link href="/meals">
             <Button variant="primary">
@@ -40,11 +42,12 @@ export default function KitchenDashboard() {
         }
       />
       <div className="grid gap-6 px-4 md:px-8">
-        <dl className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+        <dl className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
           <Stat label="Orders to cook" value={orders ? String(live.filter((o) => o.status !== "READY").length) : null} href="/meals/orders" />
           <Stat label="Waiting for collection" value={orders ? String(live.filter((o) => o.status === "READY").length) : null} href="/meals/orders" />
           <Stat label="Portions sold today" value={orders ? String(portions) : null} />
           <Stat label="Taken today" value={orders ? gbp(takings) : null} />
+          <Stat label="Clearing" value={earnings ? formatPence(earnings.clearingPence) : null} href="/earnings" />
         </dl>
 
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">

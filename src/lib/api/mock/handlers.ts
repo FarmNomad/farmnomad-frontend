@@ -191,6 +191,34 @@ const notFound = (what: string): Res => ({
 const nextId = (list: { id: number }[]) =>
   Math.max(0, ...list.map((x) => x.id)) + 1;
 
+// Temporary role profile storage, one per role, in this browser only.
+const REQUIRED_PROFILE_FIELDS: Record<string, string[]> = {
+  FARMER: ["name", "address", "postcode"],
+  DRIVER: ["vehicleType", "vehicleRegistration", "hasHireRewardInsurance"],
+  KITCHEN: ["name", "address", "postcode", "fsaRegistered"],
+};
+const profileKey = () => `fn_role_profile_${role()}`;
+const readProfile = (): Record<string, unknown> | null => {
+  try {
+    return JSON.parse(window.localStorage.getItem(profileKey()) ?? "null");
+  } catch {
+    return null;
+  }
+};
+const profileStatus = () => {
+  const r = role();
+  const profile = readProfile();
+  const missingFields = (REQUIRED_PROFILE_FIELDS[r] ?? []).filter((k) => !profile || profile[k] === undefined || profile[k] === "" || profile[k] === false);
+  return { role: r, profileComplete: missingFields.length === 0, missingFields, profile: REQUIRED_PROFILE_FIELDS[r] ? profile : null };
+};
+const saveProfile = (body: unknown) => {
+  const next = { id: 1, ...(readProfile() ?? {}), ...((body ?? {}) as Record<string, unknown>) };
+  try {
+    window.localStorage.setItem(profileKey(), JSON.stringify(next));
+  } catch {}
+  return next;
+};
+
 const routes: [string, RegExp, (m: RegExpMatchArray, r: Req) => Res][] = [
   ["GET", /^\/users\/me$/, () => ({ data: currentUser() })],
   [
@@ -249,91 +277,28 @@ const routes: [string, RegExp, (m: RegExpMatchArray, r: Req) => Res][] = [
       return { data: state.directory[i] };
     },
   ],
+
+  // ───────── Role profiles (temporary) ─────────
+  // The backend has no /profile, /farms, /drivers/profile or /kitchens yet. Until it does, the
+  // details are kept in this browser only so the forms and gates can be used. Nothing here
+  // reaches the server; move these routes to LIVE_ROUTES when the endpoints land.
+  ["GET", /^\/profile\/me$/, () => ({ data: profileStatus() })],
+  ["POST", /^\/(farms|drivers\/profile|kitchens)$/, (_, r) => ({ data: saveProfile(r.body) })],
+  ["PUT", /^\/(farms\/\d+|drivers\/profile|kitchens\/\d+)$/, (_, r) => ({ data: saveProfile(r.body) })],
+
+  // ───────── Earnings and payouts (temporary) ─────────
+  // No /earnings or /connect endpoints yet either. An honest "not set up, nothing earned" is
+  // returned, never invented figures. Move these to LIVE_ROUTES when the endpoints land.
   [
-    "POST",
-    /^\/auth\/resend-verification$/,
-    (_, r) => {
-      const { email } = (r.body ?? {}) as { email?: string };
-      return email
-        ? {
-            data: {
-              message:
-                "If that account exists and isn't verified yet, a new verification link has been sent.",
-            },
-          }
-        : bad("Enter your email address.");
-    },
+    "GET",
+    /^\/earnings$/,
+    () => ({ data: { onboarded: false, payoutsEnabled: false, requirementsDue: [], clearingPence: 0, availablePence: 0, paidOutPence: 0, nextPayoutDate: null, nextPayoutPence: 0 } }),
   ],
-  // Demo: any token verifies, except "expired", which shows the failed state.
+  ["GET", /^\/earnings\/(transactions|payouts)$/, () => ({ data: [] })],
   [
     "POST",
-    /^\/auth\/verify-email$/,
-    (_, r) => {
-      const { token } = (r.body ?? {}) as { token?: string };
-      if (!token) return bad("The verification link is missing its token.");
-      if (token === "expired")
-        return bad("This verification link has expired.");
-      return {
-        data: { message: "Your email is verified. You can log in now." },
-      };
-    },
-  ],
-  [
-    "POST",
-    /^\/auth\/change-password$/,
-    (_, r) => {
-      const { currentPassword, newPassword } = (r.body ?? {}) as {
-        currentPassword?: string;
-        newPassword?: string;
-      };
-      if (!currentPassword) return bad("Enter your current password.");
-      if (!newPassword || newPassword.length < 8)
-        return bad("Use at least 8 characters.");
-      return { data: { ok: true } };
-    },
-  ],
-  [
-    "POST",
-    /^\/auth\/login$/,
-    (_, r) => {
-      const { email, password } = (r.body ?? {}) as {
-        email?: string;
-        password?: string;
-      };
-      if (!email || !password) return bad("Enter your email and password.");
-      if (password.length < 6)
-        return {
-          error: {
-            status: 401,
-            data: { message: "That email and password don't match." },
-          },
-        };
-      return { data: { token: "mock-token" } };
-    },
-  ],
-  [
-    "POST",
-    /^\/auth\/forgot-password$/,
-    (_, r) => {
-      const { email } = (r.body ?? {}) as { email?: string };
-      return email && /\S+@\S+\.\S+/.test(email)
-        ? { data: { ok: true } }
-        : bad("Enter a full email address.");
-    },
-  ],
-  [
-    "POST",
-    /^\/auth\/register$/,
-    (_, r) => {
-      const b = (r.body ?? {}) as {
-        email?: string;
-        password?: string;
-        fullName?: string;
-      };
-      if (!b.fullName || !b.email || !b.password)
-        return bad("Fill in your name, email and password.");
-      return { data: { ok: true } };
-    },
+    /^\/connect\/(onboard|dashboard-link)$/,
+    () => ({ error: { status: 503, data: { message: "Payout setup isn't switched on yet. It will be available here soon." } } }),
   ],
 
   // Marketplace (spec §7.5)

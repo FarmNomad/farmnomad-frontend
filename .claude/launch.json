@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "farmnomad-3000", "runtimeExecutable": "npx", "runtimeArgs": ["next", "dev", "--webpack", "-p", "3000"], "port": 3000 },
+    { "name": "stub-backend", "runtimeExecutable": "node", "runtimeArgs": ["C:/Users/Hi/AppData/Local/Temp/claude/0b2ef2dd00d97d44/248c2c86-e434-4e96-beeb-db3427cb41a4/scratchpad/stub-backend.js"], "port": 9000 }
+  ]
+}
