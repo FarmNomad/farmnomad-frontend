@@ -55,6 +55,7 @@ import {
   AuthInput,
   Checkbox,
   Divider,
+  PasswordInput,
   PrimaryButton,
   Segmented,
   SoftButton,
@@ -498,7 +499,6 @@ function LoginForm({
   const [fetchProfile] = useLazyGetMyProfileQuery();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [show, setShow] = useState(false);
   // ?expired=1 is added when a session ends and the app sends the user back here.
   const [error, setError] = useState<string | null>(() =>
     new URLSearchParams(window.location.search).get("expired")
@@ -560,9 +560,8 @@ function LoginForm({
           inputMode="email"
           icon={<EnvelopeSimple className="size-[18px]" />}
         />
-        <AuthInput
+        <PasswordInput
           label="Password"
-          type={show ? "text" : "password"}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Enter your password"
@@ -578,9 +577,6 @@ function LoginForm({
             </button>
           }
         />
-        <Checkbox checked={show} onChange={setShow}>
-          Show password
-        </Checkbox>
         <p
           aria-live="polite"
           className={cn("text-ui-sm text-app-red", !error && "sr-only")}
@@ -803,9 +799,8 @@ function ResetForm({
         sub="You'll use it the next time you log in."
       />
       <form onSubmit={submit} noValidate className="grid gap-4">
-        <AuthInput
+        <PasswordInput
           label="New password"
-          type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="8 or more characters"
@@ -813,9 +808,8 @@ function ResetForm({
           icon={<LockSimple className="size-[18px]" />}
           error={errors.password}
         />
-        <AuthInput
+        <PasswordInput
           label="Confirm"
-          type="password"
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           placeholder="Type it again"
@@ -1341,10 +1335,9 @@ function Register({
           }
         />
         <div className="grid gap-4 sm:grid-cols-2">
-          <AuthInput
+          <PasswordInput
             label="Password"
             required
-            type="password"
             value={f.password}
             onChange={(e) => set("password", e.target.value)}
             placeholder="8 or more characters"
@@ -1352,10 +1345,9 @@ function Register({
             icon={<LockSimple className="size-[18px]" />}
             error={errors.password}
           />
-          <AuthInput
+          <PasswordInput
             label="Confirm"
             required
-            type="password"
             value={f.confirm}
             onChange={(e) => set("confirm", e.target.value)}
             placeholder="Type it again"
