@@ -5,7 +5,8 @@ import Link from "next/link";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { ArrowRight, ArrowUpRight, Gift, HandHeart, Plus } from "@phosphor-icons/react/dist/ssr";
-import { useFarmerRevenueQuery, useListFarmerOrdersQuery, useListMyProductsQuery, useListMySurplusQuery, useMeQuery } from "@/lib/api/farmnomad";
+import { useFarmerRevenueQuery, useListFarmerOrdersQuery, useListMyProductsQuery, useGetEarningsSummaryQuery, useListMySurplusQuery, useMeQuery } from "@/lib/api/farmnomad";
+import { formatPence } from "@/lib/types/earnings";
 import { daysUntil, stockState, type Order, type Product } from "@/lib/types/api";
 import { useApp } from "@/components/app/AppState";
 import { PageHeader } from "@/components/app/PageHeader";
@@ -22,6 +23,7 @@ const RANGES = [
 
 export default function FarmerDashboard() {
   const { data: me } = useMeQuery();
+  const { data: earnings } = useGetEarningsSummaryQuery();
   const { data: revenue } = useFarmerRevenueQuery();
   const { data: orders } = useListFarmerOrdersQuery();
   const { data: products } = useListMyProductsQuery();
@@ -72,11 +74,12 @@ export default function FarmerDashboard() {
 
       <div className="grid min-w-0 gap-4 px-4 md:px-8 [&>*]:min-w-0">
         {/* KPI strip, Mercury style: one surface, hairline dividers */}
-        <section aria-label="This month" className="grid grid-cols-2 overflow-hidden rounded-xl shadow-[0_0_0_1px_var(--a-line)] lg:grid-cols-4">
+        <section aria-label="This month" className="grid grid-cols-2 overflow-hidden rounded-xl shadow-[0_0_0_1px_var(--a-line)] lg:grid-cols-5">
           <Stat label="Orders to pack" value={orders ? String(toPack.length) : null} href="/orders" note={toPack.length ? "Waiting at the farm" : "All packed"} />
           <Stat label="Live listings" value={products ? String(live.length) : null} href="/products" note={`${products?.length ?? 0} products in total`} />
           <Stat label="Need attention" value={products ? String(attention.length) : null} href="/products" note="Low, expiring or out" tone={attention.length ? "amber" : undefined} />
           <Stat label="Surplus claimed" value={surplus ? String(claimed) : null} href="/surplus/manage" note="Units to food groups" />
+          <Stat label="Clearing" value={earnings ? formatPence(earnings.clearingPence) : null} href="/earnings" note="Earnings on their way to you" />
         </section>
 
         {/* Revenue */}

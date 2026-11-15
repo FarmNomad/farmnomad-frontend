@@ -8,6 +8,9 @@ import { useCreateProductMutation, useDeleteProductMutation, useMeQuery, useUpda
 import { apiError } from "@/lib/api/errors";
 import { PRODUCT_CATEGORIES, daysUntil, type ProductWrite } from "@/lib/types/api";
 import { cn } from "@/lib/cn";
+import { useProfileGate } from "@/lib/hooks/useProfileGate";
+import { PayoutsNotice } from "@/components/earnings/PayoutsNotice";
+import { ProfileRequiredCard, profileIncomplete } from "@/components/profile/gates";
 import { useApp } from "./AppState";
 import { Sheet } from "./Sheet";
 import { Button, Kbd } from "./ui";
@@ -27,6 +30,11 @@ export function ProductSheet() {
 
   const [f, setF] = useState<Form>(empty);
   const [errors, setErrors] = useState<Errors>({});
+  // A farmer needs their farm details before listing: the pickup address comes from them.
+  // The server can also say so (409), in case something slips past the check here.
+  const gate = useProfileGate();
+  const [serverGate, setServerGate] = useState<string[] | null>(null);
+  const gated = !editing && gate.role === "FARMER" && (gate.needsProfile || !!serverGate);
   const [create, { isLoading: creating }] = useCreateProductMutation();
   const [update, { isLoading: updating }] = useUpdateProductMutation();
   const [del] = useDeleteProductMutation();
@@ -38,6 +46,7 @@ export function ProductSheet() {
   useEffect(() => {
     if (!open) return;
     setErrors({});
+    setServerGate(null);
     setF(
       editing
         ? {
@@ -106,6 +115,8 @@ export function ProductSheet() {
       }
       close();
     } catch (err) {
+      const missing = profileIncomplete(err);
+      if (missing) return setServerGate(missing);
       toast.error("That didn't save", { description: apiError(err, "Check your connection and try again.") });
     }
   }
@@ -147,12 +158,19 @@ export function ProductSheet() {
           <Button variant="ghost" onClick={close}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={() => submit()} disabled={creating || updating} kbd="⌘↵">
-            {editing ? "Save changes" : "List product"}
-          </Button>
+          {!gated && (
+            <Button variant="primary" onClick={() => submit()} disabled={creating || updating} kbd="⌘↵">
+              {editing ? "Save changes" : "List product"}
+            </Button>
+          )}
         </>
       }
     >
+      {gated ? (
+        <ProfileRequiredCard role="FARMER" missingFields={serverGate ?? gate.missingFields} onNavigate={close} />
+      ) : (
+        <>
+      <PayoutsNotice onNavigate={close} />
       <form ref={formRef} onSubmit={submit} onKeyDown={onKeyDown} noValidate className="grid gap-5 px-5 py-5">
         <PhotosPicker value={f.photos} onChange={(v) => set("photos", v)} />
 
@@ -223,6 +241,8 @@ export function ProductSheet() {
       <p className="px-5 pb-5 text-ui-sm text-app-faint">
         Press <Kbd>⌘</Kbd> <Kbd>↵</Kbd> to save from any field.
       </p>
+        </>
+      )}
     </Sheet>
   );
 }

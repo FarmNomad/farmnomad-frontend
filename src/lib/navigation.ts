@@ -9,6 +9,7 @@ import {
   Buildings,
   CookingPot,
   ChatsCircle,
+  Coins,
   ForkKnife,
   Gift,
   HandHeart,
@@ -37,6 +38,7 @@ export const NAV: Record<MockRole, NavItem[]> = {
     { href: "/donations/manage", label: "Donations", icon: Gift, key: "G", release: "R2" },
     { href: "/weather", label: "Weather & Planting", icon: CloudSun, key: "W", release: "R3" },
     { href: "/crop-scanner", label: "Crop scanner", icon: Scan, key: "X", release: "R3" },
+    { href: "/earnings", label: "Earnings", icon: Coins, key: "E", release: "R1" },
     { href: "/messages", label: "Messages", icon: ChatsCircle, key: "I", release: "R2" },
     { href: "/profile", label: "Profile", icon: UserCircle, key: "U", release: "R1" },
   ],
@@ -51,6 +53,7 @@ export const NAV: Record<MockRole, NavItem[]> = {
   DRIVER: [
     { href: "/dashboard/driver", label: "Today", icon: House, key: "D", release: "R1", mobile: true },
     { href: "/jobs", label: "Jobs", icon: MapTrifold, key: "J", release: "R1", mobile: true },
+    { href: "/earnings", label: "Earnings", icon: Coins, key: "E", release: "R1" },
     { href: "/messages", label: "Messages", icon: ChatsCircle, key: "I", release: "R2", mobile: true },
     { href: "/profile", label: "Profile", icon: UserCircle, key: "U", release: "R1", mobile: true },
   ],
@@ -60,6 +63,7 @@ export const NAV: Record<MockRole, NavItem[]> = {
     { href: "/meals", label: "Menu", icon: BookOpenText, key: "N", release: "R3" },
     { href: "/marketplace", label: "Buy ingredients", icon: Storefront, key: "M", release: "R1" },
     { href: "/orders", label: "Ingredient orders", icon: Receipt, release: "R1" },
+    { href: "/earnings", label: "Earnings", icon: Coins, key: "E", release: "R1" },
     { href: "/messages", label: "Messages", icon: ChatsCircle, key: "I", release: "R2" },
     { href: "/profile", label: "Profile", icon: UserCircle, key: "U", release: "R1" },
   ],
@@ -111,11 +115,11 @@ export const ROLE_META: Record<MockRole, { label: string; workspace: string }> =
  * A trailing "$" means that exact path only, so "/surplus$" doesn't also allow "/surplus/manage".
  */
 const ALLOWED: Record<MockRole, string[]> = {
-  FARMER: ["/dashboard$", "/dashboard/farmer", "/products", "/orders", "/surplus/manage", "/donations/manage", "/weather", "/crop-scanner", "/marketplace", "/messages", "/profile"],
+  FARMER: ["/dashboard$", "/dashboard/farmer", "/products", "/orders", "/surplus/manage", "/donations/manage", "/weather", "/crop-scanner", "/marketplace", "/earnings", "/messages", "/profile"],
   CUSTOMER: ["/dashboard$", "/marketplace", "/orders", "/cart", "/checkout", "/nomadeat", "/messages", "/profile"],
-  DRIVER: ["/dashboard$", "/dashboard/driver", "/jobs", "/messages", "/profile"],
+  DRIVER: ["/dashboard$", "/dashboard/driver", "/jobs", "/earnings", "/messages", "/profile"],
   ADMIN: ["/dashboard$", "/dashboard/admin", "/admin", "/weather", "/marketplace", "/nomadeat", "/messages", "/profile"],
-  KITCHEN: ["/dashboard$", "/dashboard/kitchen", "/meals", "/marketplace", "/cart", "/checkout", "/orders", "/nomadeat", "/messages", "/profile"],
+  KITCHEN: ["/dashboard$", "/dashboard/kitchen", "/meals", "/marketplace", "/cart", "/checkout", "/orders", "/nomadeat", "/earnings", "/messages", "/profile"],
   ORGANISATION: ["/dashboard$", "/dashboard/organisation", "/donations$", "/surplus$", "/organisations", "/marketplace", "/messages", "/profile"],
 };
 

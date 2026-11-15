@@ -8,6 +8,9 @@ import { Field, PhotosPicker, input } from "@/components/app/ProductSheet";
 import { Sheet } from "@/components/app/Sheet";
 import { Button } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
+import { useProfileGate } from "@/lib/hooks/useProfileGate";
+import { PayoutsNotice } from "@/components/earnings/PayoutsNotice";
+import { ProfileRequiredCard, profileIncomplete } from "@/components/profile/gates";
 import { CUISINES, DIETARY } from "./meta";
 
 const EMPTY = { name: "", description: "", price: "", portionsAvailable: "", cuisine: "British", photos: [] as string[], available: true, dietary: [] as string[], farms: [] as string[] };
@@ -24,6 +27,10 @@ export function MealSheet({ open, onClose }: { open: Meal | "new" | null; onClos
   const farms = useMemo(() => [...new Set(products?.map((p) => p.farmerName).filter(Boolean) as string[])].sort(), [products]);
   const [f, setF] = useState(EMPTY);
   const [tried, setTried] = useState(false);
+  // A kitchen needs its details (and food registration) before listing meals.
+  const gate = useProfileGate();
+  const [serverGate, setServerGate] = useState<string[] | null>(null);
+  const gated = !editing && gate.role === "KITCHEN" && (gate.needsProfile || !!serverGate);
   const set = <K extends keyof typeof EMPTY>(k: K, v: (typeof EMPTY)[K]) => setF((p) => ({ ...p, [k]: v }));
 
   useEffect(() => {
@@ -56,6 +63,8 @@ export function MealSheet({ open, onClose }: { open: Meal | "new" | null; onClos
       toast.success(editing ? "Meal updated" : "Meal added to your menu", { description: body.available ? "Diners can order it on NomadEat now." : "It's hidden until you switch it on." });
       onClose();
     } catch (e) {
+      const missing = profileIncomplete(e);
+      if (missing) return setServerGate(missing);
       toast.error((e as { data?: { message?: string } })?.data?.message ?? "Couldn't save the meal");
     }
   }
@@ -75,12 +84,19 @@ export function MealSheet({ open, onClose }: { open: Meal | "new" | null; onClos
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={save} disabled={c.isLoading || u.isLoading}>
-            {editing ? "Save changes" : "Add to menu"}
-          </Button>
+          {!gated && (
+            <Button variant="primary" onClick={save} disabled={c.isLoading || u.isLoading}>
+              {editing ? "Save changes" : "Add to menu"}
+            </Button>
+          )}
         </>
       }
     >
+      {gated ? (
+        <ProfileRequiredCard role="KITCHEN" missingFields={serverGate ?? gate.missingFields} onNavigate={onClose} />
+      ) : (
+        <>
+      <PayoutsNotice onNavigate={onClose} />
       <div className="grid gap-5 px-5 py-5">
         <PhotosPicker value={f.photos} onChange={(v) => set("photos", v)} />
         <Field label="Meal name" required error={tried ? errors.name : undefined}>
@@ -139,6 +155,8 @@ export function MealSheet({ open, onClose }: { open: Meal | "new" | null; onClos
           <Switch on={f.available && portions !== 0} onChange={(v) => set("available", v)} label="On the menu" />
         </label>
       </div>
+        </>
+      )}
     </Sheet>
   );
 }

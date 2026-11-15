@@ -26,6 +26,8 @@ import type {
   Surplus,
   User,
 } from "@/lib/types/api";
+import type { EarningLine, EarningsSummary, PayoutLine } from "@/lib/types/earnings";
+import type { DriverProfile, Farm, Kitchen, ProfileStatus } from "@/lib/types/profile";
 
 /**
  * Where the data comes from.
@@ -54,6 +56,8 @@ const LIVE_ROUTES: [method: string, path: RegExp][] = [
   ["PATCH", /^\/orders\/\d+\/(assign|status)$/],
   ["GET", /^\/users$/],
   ["PUT", /^\/users\/\d+$/],
+  // The profile picture.
+  ["POST", /^\/users\/me\/avatar$/],
 ];
 
 // Endpoints whose every request is live, whatever the path. The order endpoints also read the
@@ -173,6 +177,8 @@ export const api = createApi({
     "Users",
     "AdminOrders",
     "Orgs",
+    "Profile",
+    "Earnings",
   ],
   endpoints: (b) => ({
     me: b.query<User, void>({ query: () => "/users/me", providesTags: ["Me"] }),
@@ -645,6 +651,68 @@ export const api = createApi({
       invalidatesTags: ["Surplus"],
     }),
 
+    // ───────── Profile picture (multipart; the file field must be named exactly "file") ─────────
+    uploadAvatar: b.mutation<User, File>({
+      query: (file) => {
+        const body = new FormData();
+        body.append("file", file);
+        return { url: "/users/me/avatar", method: "POST", body };
+      },
+      invalidatesTags: ["Me", "Users"],
+    }),
+
+    // ───────── Role profiles: farm, vehicle and kitchen details (role profiles spec §7) ─────────
+    // The owner is never sent; the backend takes it from the session.
+    getMyProfile: b.query<ProfileStatus, void>({
+      query: () => "/profile/me",
+      providesTags: ["Profile"],
+    }),
+    createFarm: b.mutation<Farm, Partial<Farm>>({
+      query: (body) => ({ url: "/farms", method: "POST", body }),
+      invalidatesTags: ["Profile"],
+    }),
+    updateFarm: b.mutation<Farm, { id: number; body: Partial<Farm> }>({
+      query: ({ id, body }) => ({ url: `/farms/${id}`, method: "PUT", body }),
+      invalidatesTags: ["Profile"],
+    }),
+    createDriverProfile: b.mutation<DriverProfile, Partial<DriverProfile>>({
+      query: (body) => ({ url: "/drivers/profile", method: "POST", body }),
+      invalidatesTags: ["Profile"],
+    }),
+    updateDriverProfile: b.mutation<DriverProfile, Partial<DriverProfile>>({
+      query: (body) => ({ url: "/drivers/profile", method: "PUT", body }),
+      invalidatesTags: ["Profile"],
+    }),
+    createKitchen: b.mutation<Kitchen, Partial<Kitchen>>({
+      query: (body) => ({ url: "/kitchens", method: "POST", body }),
+      invalidatesTags: ["Profile"],
+    }),
+    updateKitchen: b.mutation<Kitchen, { id: number; body: Partial<Kitchen> }>({
+      query: ({ id, body }) => ({ url: `/kitchens/${id}`, method: "PUT", body }),
+      invalidatesTags: ["Profile"],
+    }),
+
+    // ───────── Earnings and payouts (payouts spec §5) ─────────
+    getEarningsSummary: b.query<EarningsSummary, void>({
+      query: () => "/earnings",
+      providesTags: ["Earnings"],
+    }),
+    getEarningTransactions: b.query<EarningLine[], { month?: string } | void>({
+      query: (arg) => ({ url: "/earnings/transactions", params: arg ?? undefined }),
+      providesTags: ["Earnings"],
+    }),
+    getPayoutHistory: b.query<PayoutLine[], void>({
+      query: () => "/earnings/payouts",
+      providesTags: ["Earnings"],
+    }),
+    // Mutations, not queries: each call mints a single-use, short-lived Stripe link. Never cache one.
+    startConnectOnboarding: b.mutation<{ url: string }, void>({
+      query: () => ({ url: "/connect/onboard", method: "POST" }),
+    }),
+    getConnectDashboardLink: b.mutation<{ url: string }, void>({
+      query: () => ({ url: "/connect/dashboard-link", method: "POST" }),
+    }),
+
     // CONFIRM WITH BACKEND: revenue analytics endpoint is not documented yet.
     farmerRevenue: b.query<{ date: string; value: number }[], void>({
       query: () => "/analytics/farmer/revenue",
@@ -653,6 +721,20 @@ export const api = createApi({
 });
 
 export const {
+  useUploadAvatarMutation,
+  useGetMyProfileQuery,
+  useLazyGetMyProfileQuery,
+  useCreateFarmMutation,
+  useUpdateFarmMutation,
+  useCreateDriverProfileMutation,
+  useUpdateDriverProfileMutation,
+  useCreateKitchenMutation,
+  useUpdateKitchenMutation,
+  useGetEarningsSummaryQuery,
+  useGetEarningTransactionsQuery,
+  useGetPayoutHistoryQuery,
+  useStartConnectOnboardingMutation,
+  useGetConnectDashboardLinkMutation,
   useMeQuery,
   useLazyMeQuery,
   useResetPasswordMutation,

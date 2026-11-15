@@ -36,6 +36,7 @@ import {
 } from "@phosphor-icons/react/dist/ssr";
 import {
   useForgotPasswordMutation,
+  useLazyGetMyProfileQuery,
   useLazyMeQuery,
   useLoginMutation,
   useRegisterMutation,
@@ -44,6 +45,7 @@ import {
   useVerifyEmailMutation,
 } from "@/lib/api/farmnomad";
 import { HOME } from "@/lib/navigation";
+import { hasProfileStep } from "@/lib/types/profile";
 import { clearSession, setSession } from "@/lib/auth/session";
 import type { Role } from "@/lib/types/api";
 import { useApp } from "@/components/app/AppState";
@@ -52,7 +54,6 @@ import { cn } from "@/lib/cn";
 import {
   AuthInput,
   Checkbox,
-  Chip,
   Divider,
   PrimaryButton,
   Segmented,
@@ -494,6 +495,7 @@ function LoginForm({
   const { setRole } = useApp();
   const [login, { isLoading }] = useLoginMutation();
   const [fetchMe, { isFetching: loadingMe }] = useLazyMeQuery();
+  const [fetchProfile] = useLazyGetMyProfileQuery();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
@@ -521,9 +523,23 @@ function LoginForm({
         };
       const role = me.role;
       setRole(role);
+      // A farmer, driver or kitchen without their details goes to the profile step, the first
+      // time only. After that the dashboard banner and the listing gate do the reminding.
+      let next = HOME[role];
+      const seenKey = `fn_onboarding_seen_${me.id}`;
+      if (hasProfileStep(role) && !window.localStorage.getItem(seenKey)) {
+        try {
+          const status = await fetchProfile().unwrap();
+          window.localStorage.setItem(seenKey, "1");
+          if (!status.profileComplete) next = "/onboarding/profile";
+        } catch {
+          // The profile check is a nicety; never let it stop a login.
+        }
+      }
       // A full page load on purpose: Next keeps earlier pages alive in memory, so a soft
       // navigation would bring back the previous user and their cached data.
-      window.location.assign(HOME[role]);
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+      window.location.assign(next);
     } catch (err) {
       clearSession();
       setError(apiMessage(err) ?? "Something went wrong. Try again.");
@@ -1036,6 +1052,32 @@ function ResendForm({ onBack }: { onBack: () => void }) {
 
 /* ─── Sign up: pick a role, then details for that role ───────────────── */
 
+// What the address is for, per role.
+const ADDRESS: Record<SignupRole, { label: string; hint?: string }> = {
+  CUSTOMER: {
+    label: "Delivery postcode",
+    hint: "So we can show the farms that deliver to you.",
+  },
+  FARMER: {
+    label: "Farm postcode",
+    hint: "Where buyers' orders are collected from.",
+  },
+  DRIVER: { label: "Home postcode", hint: "We offer runs that start near you." },
+  ORGANISATION: {
+    label: "Collection postcode",
+    hint: "Where surplus is delivered or collected.",
+  },
+  KITCHEN: { label: "Kitchen postcode" },
+};
+
+// Role details are asked for after the first login, not here, so say what comes next.
+const NEXT_STEP: Partial<Record<SignupRole, string>> = {
+  FARMER: "After you log in we'll ask for your farm name and a few details buyers see.",
+  DRIVER: "After you log in we'll ask about your vehicle and insurance.",
+  KITCHEN: "After you log in we'll ask for your kitchen name and food registration.",
+  ORGANISATION: "After you log in you'll add your organisation's name and type so we can verify it.",
+};
+
 type Details = {
   fullName: string;
   email: string;
@@ -1046,14 +1088,6 @@ type Details = {
   city: string;
   postcode: string;
   country: string;
-  orgName: string; // farm, organisation or kitchen name
-  grows: string[];
-  vehicle: string;
-  radius: string;
-  orgType: string;
-  charityNumber: string;
-  hygiene: string;
-  groupBuying: boolean;
   terms: boolean;
 };
 const EMPTY: Details = {
@@ -1066,14 +1100,6 @@ const EMPTY: Details = {
   city: "",
   postcode: "",
   country: "United Kingdom",
-  orgName: "",
-  grows: [],
-  vehicle: "",
-  radius: "10",
-  orgType: "",
-  charityNumber: "",
-  hygiene: "",
-  groupBuying: true,
   terms: false,
 };
 
@@ -1115,14 +1141,6 @@ function Register({
     if (!f.country.trim()) er.country = "Add your country.";
     if (role !== "CUSTOMER" && !f.phoneNumber.trim())
       er.phoneNumber = "Add a number so buyers and drivers can reach you.";
-    if (
-      (role === "FARMER" || role === "ORGANISATION" || role === "KITCHEN") &&
-      !f.orgName.trim()
-    )
-      er.orgName = "Add a name.";
-    if (role === "ORGANISATION" && !f.orgType)
-      er.orgType = "Pick the type of group.";
-    if (role === "DRIVER" && !f.vehicle) er.vehicle = "Pick what you drive.";
     if (!f.terms)
       er.terms = "You need to agree before we can create your account.";
     return er;
@@ -1136,8 +1154,9 @@ function Register({
     try {
       // POST /auth/register takes exactly these fields. It creates an inactive account and emails a
       // verification link; there is no session until the link is opened and the user logs in.
-      // The role details collected below (farm name, vehicle, organisation type and so on) have no
-      // field on this endpoint yet. Organisations send theirs to POST /organisations after logging in.
+      // Nothing is collected here that the endpoint would discard. Farm, vehicle and kitchen
+      // details are added after the first login (/onboarding/profile); organisations add theirs
+      // at /organisations/apply.
       await register({
         fullName: f.fullName.trim(),
         email: f.email.trim(),
@@ -1348,198 +1367,20 @@ function Register({
       </Section>
 
       <Section title={meta.section}>
-        {role === "FARMER" && (
-          <>
-            <AuthInput
-              label="Farm name"
-              required
-              value={f.orgName}
-              onChange={(e) => set("orgName", e.target.value)}
-              placeholder="e.g. Hollins Farm"
-              icon={<Plant className="size-[18px]" />}
-              error={errors.orgName}
-            />
-            <PostcodeField
-              f={f}
-              set={set}
-              error={errors.postcode}
-              addressError={errors.address}
-              cityError={errors.city}
-              countryError={errors.country}
-              label="Farm postcode"
-              hint="Where buyers' orders are collected from."
-            />
-            <Choice
-              label="What do you grow or rear?"
-              hint="Pick any. You can change this later."
-            >
-              {[
-                "Vegetables",
-                "Fruit",
-                "Dairy",
-                "Eggs",
-                "Meat",
-                "Grains",
-                "Herbs",
-              ].map((g) => (
-                <Chip
-                  key={g}
-                  on={f.grows.includes(g)}
-                  onClick={() =>
-                    set(
-                      "grows",
-                      f.grows.includes(g)
-                        ? f.grows.filter((x) => x !== g)
-                        : [...f.grows, g],
-                    )
-                  }
-                >
-                  {g}
-                </Chip>
-              ))}
-            </Choice>
-          </>
-        )}
-        {role === "CUSTOMER" && (
-          <>
-            <PostcodeField
-              f={f}
-              set={set}
-              error={errors.postcode}
-              addressError={errors.address}
-              cityError={errors.city}
-              countryError={errors.country}
-              label="Delivery postcode"
-              hint="So we can show the farms that deliver to you."
-            />
-            <Checkbox
-              checked={f.groupBuying}
-              onChange={(v) => set("groupBuying", v)}
-            >
-              Tell me when group buying opens, so I can buy with others at
-              wholesale prices.
-            </Checkbox>
-          </>
-        )}
-        {role === "DRIVER" && (
-          <>
-            <PostcodeField
-              f={f}
-              set={set}
-              error={errors.postcode}
-              addressError={errors.address}
-              cityError={errors.city}
-              countryError={errors.country}
-              label="Home postcode"
-              hint="We offer runs that start near you."
-            />
-            <Choice label="What do you drive?" error={errors.vehicle}>
-              {["Car", "Van", "Refrigerated van", "Cargo bike"].map((v) => (
-                <Chip
-                  key={v}
-                  on={f.vehicle === v}
-                  onClick={() => set("vehicle", v)}
-                >
-                  {v}
-                </Chip>
-              ))}
-            </Choice>
-            <Choice label="How far will you travel?">
-              {["5", "10", "20", "30"].map((m) => (
-                <Chip
-                  key={m}
-                  on={f.radius === m}
-                  onClick={() => set("radius", m)}
-                >
-                  {m} miles
-                </Chip>
-              ))}
-            </Choice>
-          </>
-        )}
-        {role === "ORGANISATION" && (
-          <>
-            <AuthInput
-              label="Organisation name"
-              required
-              value={f.orgName}
-              onChange={(e) => set("orgName", e.target.value)}
-              placeholder="e.g. St Mary's Food Bank"
-              icon={<Buildings className="size-[18px]" />}
-              error={errors.orgName}
-            />
-            {/* Spec §3.11: type ∈ FOODBANK, SCHOOL, RELIGIOUS, STUDENT_GROUP */}
-            <Choice label="Type of group" error={errors.orgType}>
-              {[
-                ["FOODBANK", "Food bank"],
-                ["SCHOOL", "School"],
-                ["RELIGIOUS", "Faith group"],
-                ["STUDENT_GROUP", "Student group"],
-              ].map(([v, l]) => (
-                <Chip
-                  key={v}
-                  on={f.orgType === v}
-                  onClick={() => set("orgType", v)}
-                >
-                  {l}
-                </Chip>
-              ))}
-            </Choice>
-            <AuthInput
-              label="Charity number"
-              value={f.charityNumber}
-              onChange={(e) => set("charityNumber", e.target.value)}
-              placeholder="Optional"
-              inputMode="numeric"
-              hint="Registered charities are verified faster."
-            />
-            <PostcodeField
-              f={f}
-              set={set}
-              error={errors.postcode}
-              addressError={errors.address}
-              cityError={errors.city}
-              countryError={errors.country}
-              label="Collection postcode"
-              hint="Where surplus is delivered or collected."
-            />
-          </>
-        )}
-        {role === "KITCHEN" && (
-          <>
-            <AuthInput
-              label="Kitchen name"
-              required
-              value={f.orgName}
-              onChange={(e) => set("orgName", e.target.value)}
-              placeholder="e.g. Fishergate Kitchen"
-              icon={<CookingPot className="size-[18px]" />}
-              error={errors.orgName}
-            />
-            <PostcodeField
-              f={f}
-              set={set}
-              error={errors.postcode}
-              addressError={errors.address}
-              cityError={errors.city}
-              countryError={errors.country}
-              label="Kitchen postcode"
-            />
-            <Choice
-              label="Food hygiene rating"
-              hint="From your Food Standards Agency inspection."
-            >
-              {["5", "4", "3", "Awaiting inspection"].map((h) => (
-                <Chip
-                  key={h}
-                  on={f.hygiene === h}
-                  onClick={() => set("hygiene", h)}
-                >
-                  {h}
-                </Chip>
-              ))}
-            </Choice>
-          </>
+        <PostcodeField
+          f={f}
+          set={set}
+          error={errors.postcode}
+          addressError={errors.address}
+          cityError={errors.city}
+          countryError={errors.country}
+          label={ADDRESS[role].label}
+          hint={ADDRESS[role].hint}
+        />
+        {NEXT_STEP[role] && (
+          <p className="rounded-[12px] bg-app-hover px-3.5 py-3 text-ui-sm text-app-muted">
+            {NEXT_STEP[role]}
+          </p>
         )}
       </Section>
 
@@ -1572,35 +1413,6 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       </legend>
       {children}
     </fieldset>
-  );
-}
-
-function Choice({
-  label,
-  hint,
-  error,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  error?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="grid gap-2" role="group" aria-label={label}>
-      <span className="text-[13px] font-medium text-app-muted">{label}</span>
-      <div className="flex flex-wrap gap-2">{children}</div>
-      {(error || hint) && (
-        <p
-          className={cn(
-            "text-ui-sm",
-            error ? "text-app-red" : "text-app-faint",
-          )}
-        >
-          {error ?? hint}
-        </p>
-      )}
-    </div>
   );
 }
 

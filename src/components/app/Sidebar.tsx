@@ -130,7 +130,7 @@ export function Sidebar({ mobile = false }: { mobile?: boolean }) {
         )}
         <div className="mx-1 my-1 h-px bg-app-line" />
         <Link href="/profile" className={cn("mt-1 flex items-center gap-2.5 rounded-[7px] px-2 py-1.5 transition-colors hover:bg-app-hover", collapsed && "justify-center px-0")}>
-          <Avatar name={me?.fullName ?? "FarmNomad"} />
+          <Avatar name={me?.fullName ?? "FarmNomad"} src={me?.profilePictureUrl} />
           {!collapsed && (
             <div className="min-w-0 leading-tight">
               <p className="truncate font-medium">{me?.fullName ?? " "}</p>

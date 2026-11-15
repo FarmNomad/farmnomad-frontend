@@ -95,7 +95,13 @@ export function EmptyState({ icon, title, body, action }: { icon: ReactNode; tit
   );
 }
 
-export function Avatar({ name, className }: { name: string; className?: string }) {
+export function Avatar({ name, src, className }: { name: string; src?: string | null; className?: string }) {
+  // A profile picture when there is one; initials otherwise.
+  if (src)
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- the picture's host is the backend's choice, so it can't go through next/image
+      <img src={src} alt="" className={cn("inline-block size-6 shrink-0 rounded-full object-cover", className)} />
+    );
   const initials = name
     .split(/\s|,/)
     .filter(Boolean)

@@ -191,6 +191,34 @@ const notFound = (what: string): Res => ({
 const nextId = (list: { id: number }[]) =>
   Math.max(0, ...list.map((x) => x.id)) + 1;
 
+// Temporary role profile storage, one per role, in this browser only.
+const REQUIRED_PROFILE_FIELDS: Record<string, string[]> = {
+  FARMER: ["name", "address", "postcode"],
+  DRIVER: ["vehicleType", "vehicleRegistration", "hasHireRewardInsurance"],
+  KITCHEN: ["name", "address", "postcode", "fsaRegistered"],
+};
+const profileKey = () => `fn_role_profile_${role()}`;
+const readProfile = (): Record<string, unknown> | null => {
+  try {
+    return JSON.parse(window.localStorage.getItem(profileKey()) ?? "null");
+  } catch {
+    return null;
+  }
+};
+const profileStatus = () => {
+  const r = role();
+  const profile = readProfile();
+  const missingFields = (REQUIRED_PROFILE_FIELDS[r] ?? []).filter((k) => !profile || profile[k] === undefined || profile[k] === "" || profile[k] === false);
+  return { role: r, profileComplete: missingFields.length === 0, missingFields, profile: REQUIRED_PROFILE_FIELDS[r] ? profile : null };
+};
+const saveProfile = (body: unknown) => {
+  const next = { id: 1, ...(readProfile() ?? {}), ...((body ?? {}) as Record<string, unknown>) };
+  try {
+    window.localStorage.setItem(profileKey(), JSON.stringify(next));
+  } catch {}
+  return next;
+};
+
 const routes: [string, RegExp, (m: RegExpMatchArray, r: Req) => Res][] = [
   ["GET", /^\/users\/me$/, () => ({ data: currentUser() })],
   [
@@ -248,6 +276,29 @@ const routes: [string, RegExp, (m: RegExpMatchArray, r: Req) => Res][] = [
       state.directory[i] = { ...state.directory[i], ...patch };
       return { data: state.directory[i] };
     },
+  ],
+
+  // ───────── Role profiles (temporary) ─────────
+  // The backend has no /profile, /farms, /drivers/profile or /kitchens yet. Until it does, the
+  // details are kept in this browser only so the forms and gates can be used. Nothing here
+  // reaches the server; move these routes to LIVE_ROUTES when the endpoints land.
+  ["GET", /^\/profile\/me$/, () => ({ data: profileStatus() })],
+  ["POST", /^\/(farms|drivers\/profile|kitchens)$/, (_, r) => ({ data: saveProfile(r.body) })],
+  ["PUT", /^\/(farms\/\d+|drivers\/profile|kitchens\/\d+)$/, (_, r) => ({ data: saveProfile(r.body) })],
+
+  // ───────── Earnings and payouts (temporary) ─────────
+  // No /earnings or /connect endpoints yet either. An honest "not set up, nothing earned" is
+  // returned, never invented figures. Move these to LIVE_ROUTES when the endpoints land.
+  [
+    "GET",
+    /^\/earnings$/,
+    () => ({ data: { onboarded: false, payoutsEnabled: false, requirementsDue: [], clearingPence: 0, availablePence: 0, paidOutPence: 0, nextPayoutDate: null, nextPayoutPence: 0 } }),
+  ],
+  ["GET", /^\/earnings\/(transactions|payouts)$/, () => ({ data: [] })],
+  [
+    "POST",
+    /^\/connect\/(onboard|dashboard-link)$/,
+    () => ({ error: { status: 503, data: { message: "Payout setup isn't switched on yet. It will be available here soon." } } }),
   ],
 
   // Marketplace (spec §7.5)

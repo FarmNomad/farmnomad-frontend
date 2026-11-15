@@ -10,6 +10,7 @@ import { useGetCartQuery, useMarkNotificationReadMutation, useMeQuery, useMyNoti
 import { getSession } from "@/lib/auth/session";
 import { HOME, NAV, ROLE_META, allNav, canOpen } from "@/lib/navigation";
 import { cn } from "@/lib/cn";
+import { ProfileBanner } from "@/components/profile/gates";
 import { AppState, useApp } from "./AppState";
 import { CommandMenu } from "./CommandMenu";
 import { ProductSheet } from "./ProductSheet";
@@ -89,7 +90,13 @@ function Frame({ children }: { children: ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
-        <main className={cn("min-h-0 flex-1 overflow-y-auto", tabs && "pb-16 md:pb-0")}>{blocked ? null : children}</main>
+        <main className={cn("min-h-0 flex-1 overflow-y-auto", tabs && "pb-16 md:pb-0")}>{blocked ? null : (
+            <>
+              {path.startsWith("/dashboard") && <ProfileBanner />}
+              {children}
+            </>
+          )}
+        </main>
         {tabs && <TabBar />}
       </div>
 
