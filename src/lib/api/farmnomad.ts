@@ -58,12 +58,37 @@ const LIVE_ROUTES: [method: string, path: RegExp][] = [
   ["PUT", /^\/users\/\d+$/],
   // The profile picture.
   ["POST", /^\/users\/me\/avatar$/],
+  // Phase 4: surplus, donations and the food groups that claim them.
+  ["GET", /^\/surplus(\/my)?$/],
+  ["POST", /^\/surplus$/],
+  ["POST", /^\/surplus\/(claim|assign)\/\d+$/],
+  ["GET", /^\/donations(\/all|\/my\/farmer|\/my\/organisation)?$/],
+  ["POST", /^\/donations$/],
+  ["PATCH", /^\/donations\/\d+\/(claim|claim-and-order)$/],
+  ["GET", /^\/organisations(\/\d+)?$/],
+  ["POST", /^\/organisations$/],
+  ["PUT", /^\/organisations\/\d+$/],
+  ["PATCH", /^\/organisations\/\d+\/status$/],
 ];
 
 // Endpoints whose every request is live, whatever the path. The order endpoints also read the
 // product on each order (GET /products/{id}); that path is otherwise still on placeholder data
 // for the marketplace, so it is switched on here by endpoint rather than by path.
-const LIVE_ENDPOINTS = new Set(["myOrders", "getOrder", "assignedOrders", "unassignedOrders", "listOrdersAdmin", "orderProduct"]);
+const LIVE_ENDPOINTS = new Set([
+  "myOrders",
+  "getOrder",
+  "assignedOrders",
+  "unassignedOrders",
+  "listOrdersAdmin",
+  "orderProduct",
+  // Surplus and donations are completed from their product too.
+  "listMySurplus",
+  "listDonations",
+  "myFarmerDonations",
+  "myOrganisationDonations",
+  "allDonationsAdmin",
+  "myOrganisation",
+]);
 
 // Lists the backend has no endpoint for yet. These come back empty, so an account never sees
 // made-up figures as if they were its own. Move a route to LIVE_ROUTES (with its
@@ -156,6 +181,74 @@ async function orderList(fetch: Fetch, arg: string | FetchArgs) {
   return { data: await completeOrders(fetch, (res.data as Order[] | null) ?? []) };
 }
 
+/** The product behind each row, read once per distinct product. Deleted products are simply absent. */
+async function productsById(fetch: Fetch, ids: number[]): Promise<Map<number, Product>> {
+  const unique = [...new Set(ids)];
+  const found = await Promise.all(unique.map((id) => fetch(`/products/${id}`)));
+  const map = new Map<number, Product>();
+  unique.forEach((id, i) => {
+    if (!found[i].error && found[i].data) map.set(id, found[i].data as Product);
+  });
+  return map;
+}
+
+/**
+ * Donations and a farmer's surplus arrive with only the product's id and name. The photo,
+ * best-before date and pickup address shown on the cards come from the product itself.
+ */
+async function withProductDetails<T extends { productId: number; coverImageUrl?: string; bestBeforeDate?: string; pickupAddress?: string; farmerName?: string }>(
+  fetch: Fetch,
+  arg: string,
+  finish: (row: T) => T = (row) => row,
+) {
+  const res = await fetch(arg);
+  if (res.error) return { error: res.error };
+  const rows = (res.data as T[] | null) ?? [];
+  const products = await productsById(
+    fetch,
+    rows.map((r) => r.productId),
+  );
+  return {
+    data: rows.map((row) => {
+      const p = products.get(row.productId);
+      return finish(p ? { ...row, coverImageUrl: p.coverImageUrl, bestBeforeDate: p.bestBeforeDate, pickupAddress: p.pickupAddress, farmerName: row.farmerName ?? p.farmerName } : row);
+    }),
+  };
+}
+
+/** GET /surplus answers with products (the ones flagged as surplus), so shape them as surplus rows. */
+const surplusFromProduct = (p: Product): Surplus => ({
+  id: p.id,
+  productId: p.id,
+  productName: p.name,
+  quantity: p.quantityAvailable,
+  availableQuantity: p.quantityAvailable,
+  createdAt: p.createdAt,
+  farmerName: p.farmerName,
+  coverImageUrl: p.coverImageUrl,
+  bestBeforeDate: p.bestBeforeDate,
+  pickupAddress: p.pickupAddress,
+});
+
+/** The API's organisation, in the shape the pages use. */
+type ApiOrganisation = { id: number; name: string; type: Organisation["type"]; charityNumber?: string | null; registrationStatus?: string | null; verifiedAt?: string | null; userId?: number; userName?: string | null };
+function toOrganisation(o: ApiOrganisation): Organisation {
+  // CONFIRM WITH BACKEND: the exact registrationStatus values. Anything that reads as approved
+  // counts as verified, anything waiting as pending, and the rest as not verified.
+  const status = (o.registrationStatus ?? "").toUpperCase();
+  const verificationLevel = o.verifiedAt || /VERIF|APPROV|ACTIVE/.test(status) ? (/UNVERIF/.test(status) ? "UNVERIFIED" : "VERIFIED") : /PEND|REVIEW|SUBMIT|NEW/.test(status) ? "PENDING" : "UNVERIFIED";
+  return { id: o.id, name: o.name, type: o.type, charityNumber: o.charityNumber ?? undefined, verificationLevel, userId: o.userId };
+}
+// CONFIRM WITH BACKEND: the values PATCH /organisations/{id}/status accepts.
+const ORG_STATUS: Record<NonNullable<Organisation["verificationLevel"]>, string> = { VERIFIED: "VERIFIED", PENDING: "PENDING", UNVERIFIED: "REJECTED" };
+// There is no "my organisation" endpoint, so its id is remembered after applying.
+const orgKey = (userId: number) => `fn_org_${userId}`;
+const rememberOrg = (o: { id: number; userId?: number }) => {
+  try {
+    if (o.userId) window.localStorage.setItem(orgKey(o.userId), String(o.id));
+  } catch {}
+};
+
 export const api = createApi({
   reducerPath: "api",
   baseQuery,
@@ -223,7 +316,8 @@ export const api = createApi({
 
     // Surplus (spec §7.10). CONFIRM WITH BACKEND: create endpoint is not documented; this assumes POST /surplus.
     listMySurplus: b.query<Surplus[], void>({
-      query: () => "/surplus/my",
+      // The API doesn't say how much of a listing has been claimed, so all of it counts as available.
+      queryFn: (_arg, _api, _extra, fetch) => withProductDetails<Surplus>(fetch, "/surplus/my", (row) => ({ ...row, availableQuantity: row.availableQuantity ?? row.quantity })),
       providesTags: ["Surplus"],
     }),
     createSurplus: b.mutation<Surplus, { productId: number; quantity: number }>(
@@ -386,22 +480,23 @@ export const api = createApi({
 
     // ───────── Donations (spec §3.9) ─────────
     listDonations: b.query<Donation[], void>({
-      query: () => "/donations",
+      queryFn: (_arg, _api, _extra, fetch) => withProductDetails<Donation>(fetch, "/donations"),
       providesTags: ["Donation"],
     }),
     myFarmerDonations: b.query<Donation[], void>({
-      query: () => "/donations/my/farmer",
+      queryFn: (_arg, _api, _extra, fetch) => withProductDetails<Donation>(fetch, "/donations/my/farmer"),
       providesTags: ["Donation"],
     }),
     myOrganisationDonations: b.query<Donation[], void>({
-      query: () => "/donations/my/organisation",
+      queryFn: (_arg, _api, _extra, fetch) => withProductDetails<Donation>(fetch, "/donations/my/organisation"),
       providesTags: ["Donation"],
     }),
     createDonation: b.mutation<
       Donation,
       { productId: number; quantity: number; note?: string }
     >({
-      query: (body) => ({ url: "/donations", method: "POST", body }),
+      // The API takes the product and the quantity only; a note has nowhere to go yet.
+      query: ({ productId, quantity }) => ({ url: "/donations", method: "POST", body: { productId, quantity } }),
       invalidatesTags: ["Donation", "Product"],
     }),
     // organisationId is only required when the caller is ADMIN; omitted for ORGANISATION.
@@ -418,9 +513,11 @@ export const api = createApi({
     // ───────── Surplus browse (spec §3.10) ─────────
     listSurplus: b.query<Surplus[], void>({
       query: () => "/surplus",
+      transformResponse: (products: Product[] | null) => (products ?? []).map(surplusFromProduct),
       providesTags: ["Surplus"],
     }),
-    claimSurplus: b.mutation<Surplus, number>({
+    // The product id goes in the path and there is no body. The API answers with an empty body.
+    claimSurplus: b.mutation<Surplus | null, number>({
       query: (productId) => ({
         url: `/surplus/claim/${productId}`,
         method: "POST",
@@ -429,27 +526,51 @@ export const api = createApi({
     }),
 
     // ───────── Organisations (spec §3.11). CONFIRM WITH BACKEND: GET /organisations/my is assumed. ─────────
+    // There is no GET /organisations/my. The signed-in user's organisation is found by the id
+    // remembered when they applied, or failing that by looking for theirs in the list.
+    // Null means none yet, and the page shows the apply form.
     myOrganisation: b.query<Organisation | null, void>({
-      query: () => "/organisations/my",
-      // No organisation yet → 404, and the page shows the apply form.
+      queryFn: async (_arg, _api, _extra, fetch) => {
+        const me = await fetch("/users/me");
+        if (me.error) return { error: me.error };
+        const userId = (me.data as User).id;
+        let saved = 0;
+        try {
+          saved = Number(window.localStorage.getItem(orgKey(userId))) || 0;
+        } catch {}
+        if (saved) {
+          const one = await fetch(`/organisations/${saved}`);
+          if (!one.error && one.data) return { data: toOrganisation(one.data as ApiOrganisation) };
+        }
+        const all = await fetch("/organisations");
+        const mine = all.error ? undefined : ((all.data as ApiOrganisation[] | null) ?? []).find((o) => o.userId === userId);
+        if (mine) rememberOrg(mine);
+        return { data: mine ? toOrganisation(mine) : null };
+      },
       providesTags: ["Org"],
     }),
     createOrganisation: b.mutation<
       Organisation,
       Pick<Organisation, "name" | "type" | "charityNumber" | "description">
     >({
-      query: (body) => ({ url: "/organisations", method: "POST", body }),
-      invalidatesTags: ["Org"],
+      // The API takes name, type and charityNumber. The owner comes from the session.
+      query: ({ name, type, charityNumber }) => ({ url: "/organisations", method: "POST", body: { name, type, charityNumber } }),
+      transformResponse: (o: ApiOrganisation) => {
+        rememberOrg(o);
+        return toOrganisation(o);
+      },
+      invalidatesTags: ["Org", "Orgs"],
     }),
     updateOrganisation: b.mutation<
       Organisation,
       { id: number } & Partial<Organisation>
     >({
-      query: ({ id, ...body }) => ({
+      query: ({ id, name, type, charityNumber }) => ({
         url: `/organisations/${id}`,
         method: "PUT",
-        body,
+        body: { name, type, charityNumber },
       }),
+      transformResponse: toOrganisation,
       invalidatesTags: ["Org", "Orgs"],
     }),
     mockResetOrganisation: b.mutation<{ ok: boolean }, void>({
@@ -618,9 +739,10 @@ export const api = createApi({
     }),
     listOrganisations: b.query<Organisation[], void>({
       query: () => "/organisations",
+      transformResponse: (list: ApiOrganisation[] | null) => (list ?? []).map(toOrganisation),
       providesTags: ["Orgs"],
     }),
-    // Real API: PUT /organisations/{id} { verificationLevel } (field name to confirm).
+    // An admin approving or turning down a food group: PATCH /organisations/{id}/status { status }.
     verifyOrganisation: b.mutation<
       Organisation,
       {
@@ -629,18 +751,20 @@ export const api = createApi({
       }
     >({
       query: ({ id, verificationLevel }) => ({
-        url: `/__admin/organisations/${id}`,
+        url: `/organisations/${id}/status`,
         method: "PATCH",
-        body: { verificationLevel },
+        body: { status: ORG_STATUS[verificationLevel] },
       }),
+      transformResponse: toOrganisation,
       invalidatesTags: ["Orgs", "Org", "Notification"],
     }),
     allDonationsAdmin: b.query<Donation[], void>({
-      query: () => "/donations/all",
+      queryFn: (_arg, _api, _extra, fetch) => withProductDetails<Donation>(fetch, "/donations/all"),
       providesTags: ["Donation"],
     }),
+    // Admin only. organisationUserId is the food group's user id, not the organisation's id.
     assignSurplus: b.mutation<
-      Surplus & { assignedTo: string },
+      (Surplus & { assignedTo?: string }) | null,
       { productId: number; organisationUserId: number }
     >({
       query: ({ productId, organisationUserId }) => ({

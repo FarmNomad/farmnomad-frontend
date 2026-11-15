@@ -210,7 +210,9 @@ export interface MealOrder {
 // ─── R2: donations, organisations, messages (spec §2, §3.9–3.12) ───
 export type VerificationLevel = "UNVERIFIED" | "PENDING" | "VERIFIED";
 /** CONFIRM WITH BACKEND: spec types status as a plain string; these are the values the UI expects. */
-export type DonationStatus = "PENDING" | "CLAIMED" | "IN_DELIVERY" | "DELIVERED";
+// The API sends PENDING, CLAIMED, REQUESTED, REJECTED and CANCELLED. IN_DELIVERY and DELIVERED
+// are kept for when a claimed donation is tracked through its delivery order.
+export type DonationStatus = "PENDING" | "CLAIMED" | "REQUESTED" | "REJECTED" | "CANCELLED" | "IN_DELIVERY" | "DELIVERED";
 
 export interface Donation {
   id: number;
