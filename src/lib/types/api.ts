@@ -89,6 +89,11 @@ export interface Order {
   deliveryAddress?: string;
   unitPrice?: number;
   totalPence?: number | null;
+  /** What the driver is paid for the job. No commission comes out of it. */
+  deliveryFeePence?: number | null;
+  deliveredAt?: string | null;
+  /** Set by a refund. The API leaves paymentStatus PAID; completeOrders reads it as REFUNDED. */
+  refundedAt?: string | null;
   // Worked out in completeOrders (api/farmnomad.ts).
   total?: number;
   coverImageUrl?: string;

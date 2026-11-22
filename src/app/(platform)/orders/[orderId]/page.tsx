@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowClockwise, ArrowLeft, ChatsCircle, MapPin, Receipt } from "@phosphor-icons/react/dist/ssr";
 import { useGetOrderQuery, useOrderProductQuery, useMeQuery } from "@/lib/api/farmnomad";
-import { ORDER_FLOW, paymentMeta, statusMeta } from "@/components/app/orderMeta";
+import { ORDER_FLOW, paymentFor, statusMeta } from "@/components/app/orderMeta";
 import { DeliveryCodeCard } from "@/components/app/delivery/DeliveryCode";
 import { useCart } from "@/components/app/shop/useCart";
 import { Avatar, Button, EmptyState, Pill, Skeleton, gbp, orderRef, relDay, time } from "@/components/app/ui";
@@ -54,7 +54,7 @@ export default function OrderDetailPage() {
           <h1 className="mt-1 font-display text-[28px] font-medium tracking-[-0.03em]">{m.label}</h1>
           <p className="text-app-muted">{copy[o.status]}</p>
         </div>
-        <Pill tone={paymentMeta[o.paymentStatus].tone}>{paymentMeta[o.paymentStatus].label}</Pill>
+        <Pill tone={paymentFor(o).tone}>{paymentFor(o).label}</Pill>
       </div>
 
       {/* Timeline */}
@@ -90,9 +90,9 @@ export default function OrderDetailPage() {
         <div className="min-w-0 flex-1">
           <Link href={`/marketplace/${o.productId}`} className="block truncate font-medium hover:underline">{o.productName}</Link>
           <p className="truncate text-ui-sm text-app-faint">{o.farmerName}</p>
-          <p className="num mt-0.5 text-app-muted">{o.quantity} × {o.unitPrice != null ? gbp(o.unitPrice) : "–"}</p>
+          <p className="num mt-0.5 text-app-muted">{o.donationId ? `${o.quantity} donated` : `${o.quantity} × ${o.unitPrice != null ? gbp(o.unitPrice) : "–"}`}</p>
         </div>
-        {o.total != null && <p className="num font-display text-[20px] font-medium tracking-[-0.02em]">{gbp(o.total)}</p>}
+        {!o.donationId && o.total != null && <p className="num font-display text-[20px] font-medium tracking-[-0.02em]">{gbp(o.total)}</p>}
       </section>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2">

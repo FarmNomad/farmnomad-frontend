@@ -94,18 +94,20 @@ export const td = "px-4 py-2.5 first:pl-5 last:pr-5 align-middle";
 export const tr = "border-b border-app-line last:border-0 transition-colors hover:bg-app-hover/60";
 
 /** Centered confirm for actions that can't simply be undone. */
-export function Confirm({ open, title, body, action, danger, onConfirm, onClose, busy }: { open: boolean; title: string; body: ReactNode; action: string; danger?: boolean; onConfirm: () => void; onClose: () => void; busy?: boolean }) {
+/** `dismiss` renames the way out and puts focus on it, for actions a stray Enter mustn't trigger. */
+export function Confirm({ open, title, body, action, dismiss, danger, onConfirm, onClose, busy }: { open: boolean; title: string; body: ReactNode; action: string; dismiss?: string; danger?: boolean; onConfirm: () => void; onClose: () => void; busy?: boolean }) {
   const btn = useRef<HTMLButtonElement>(null);
+  const out = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!open) return;
-    const t = setTimeout(() => btn.current?.focus(), 30);
+    const t = setTimeout(() => (dismiss ? out : btn).current?.focus(), 30);
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => {
       clearTimeout(t);
       window.removeEventListener("keydown", onKey);
     };
-  }, [open, onClose]);
+  }, [open, onClose, dismiss]);
   if (typeof document === "undefined") return null;
   return createPortal(
     <AnimatePresence>
@@ -125,8 +127,8 @@ export function Confirm({ open, title, body, action, danger, onConfirm, onClose,
             <p className="font-display text-[19px] font-medium tracking-[-0.02em]">{title}</p>
             <div className="mt-1.5 text-app-muted">{body}</div>
             <div className="mt-5 flex justify-end gap-2">
-              <Button variant="ghost" onClick={onClose}>
-                Cancel
+              <Button ref={out} variant="ghost" onClick={onClose}>
+                {dismiss ?? "Cancel"}
               </Button>
               <Button ref={btn} variant={danger ? "danger" : "primary"} onClick={onConfirm} disabled={busy}>
                 {action}

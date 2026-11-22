@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { ArrowRight, ChatsCircle, CheckCircle, MapTrifold, Package, Truck, Coins } from "@phosphor-icons/react/dist/ssr";
-import { useAssignedOrdersQuery, useGetEarningsSummaryQuery, useOrderProductQuery, useMeQuery, useUnassignedOrdersQuery } from "@/lib/api/farmnomad";
+import { useAssignedOrdersQuery, useGetEarningTransactionsQuery, useOrderProductQuery, useMeQuery, useUnassignedOrdersQuery } from "@/lib/api/farmnomad";
 import { formatPence } from "@/lib/types/earnings";
 import type { Order } from "@/lib/types/api";
-import { DonationTag, JobRow, MapsLink, Route, nextStep, useJobActions } from "@/components/app/driver/parts";
+import { DonationTag, JobRow, JobTerms, MapsLink, Route, nextStep, useJobActions } from "@/components/app/driver/parts";
 import { statusMeta } from "@/components/app/orderMeta";
 import { Button, EmptyState, Skeleton, orderRef } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
@@ -15,14 +15,16 @@ const isToday = (iso?: string) => !!iso && new Date(iso).toDateString() === new 
 /** Driver home (spec §7.4 /dashboard/driver): the job in hand, what's next, and work nearby. */
 export default function DriverDashboard() {
   const { data: me } = useMeQuery();
-  const { data: earnings } = useGetEarningsSummaryQuery();
+  // The summary's clearing total spans three days, so today comes from the individual lines.
+  const { data: lines, isError: linesFailed } = useGetEarningTransactionsQuery(undefined, { pollingInterval: 60000 });
   const { data: mine, isLoading } = useAssignedOrdersQuery(undefined, { pollingInterval: 15000 });
   const { data: open } = useUnassignedOrdersQuery(undefined, { pollingInterval: 15000 });
 
   const active = (mine ?? []).filter((o) => o.status === "ASSIGNED" || o.status === "IN_TRANSIT");
   const current = active.find((o) => o.status === "IN_TRANSIT") ?? active[0];
   const upNext = active.filter((o) => o.id !== current?.id);
-  const doneToday = (mine ?? []).filter((o) => o.status === "DELIVERED" && isToday(o.updatedAt ?? o.createdAt));
+  const doneToday = (mine ?? []).filter((o) => o.status === "DELIVERED" && isToday(o.deliveredAt ?? o.updatedAt ?? o.createdAt));
+  const earnedToday = lines?.reduce((sum, l) => (l.type === "DELIVERY_FEE" && l.status !== "REVERSED" && isToday(l.date) ? sum + l.netPence : sum), 0);
   const hour = new Date().getHours();
   const hello = hour < 12 ? "Morning" : hour < 18 ? "Afternoon" : "Evening";
 
@@ -39,7 +41,7 @@ export default function DriverDashboard() {
         <Stat label="Active" value={active.length} icon={Truck} loading={isLoading} />
         <Stat label="Delivered today" value={doneToday.length} icon={CheckCircle} loading={isLoading} />
         <Stat label="Waiting nearby" value={open?.length ?? 0} icon={MapTrifold} loading={!open} href="/jobs?tab=available" />
-        <Stat label="Today's earnings" value={earnings ? formatPence(earnings.clearingPence) : "£0.00"} icon={Coins} loading={!earnings} href="/earnings" />
+        <Stat label="Today's earnings" value={earnedToday === undefined ? "–" : formatPence(earnedToday)} icon={Coins} loading={!lines && !linesFailed} href="/earnings" />
       </dl>
 
       <section className="mt-6" aria-labelledby="now">
@@ -159,7 +161,10 @@ function CurrentJob({ o }: { o: Order }) {
             </p>
             {o.donationId && <DonationTag />}
           </div>
-          <div className="mt-4">
+          <div className="mt-3">
+            <JobTerms o={o} size="lg" />
+          </div>
+          <div className="mt-5">
             <Route o={o} />
           </div>
         </div>

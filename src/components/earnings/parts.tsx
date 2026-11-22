@@ -142,9 +142,18 @@ export function EarningsTable({ lines, driver, onOpenStripe }: { lines: EarningL
                   <tr key={l.id} className="border-b border-app-line last:border-0">
                     <td className={cn(td, "num whitespace-nowrap text-app-muted")}>{day(l.date, { day: "numeric", month: "short" })}</td>
                     <td className={td}>
-                      <Link href={driver ? `/jobs/${l.orderId}` : `/orders/${l.orderId}`} className="num font-medium underline-offset-2 hover:underline">
-                        #{l.orderId}
-                      </Link>
+                      {l.orderId ? (
+                        <Link href={driver ? `/jobs/${l.orderId}` : `/orders/${l.orderId}`} className="num font-medium underline-offset-2 hover:underline">
+                          #{l.orderId}
+                        </Link>
+                      ) : l.mealOrderId ? (
+                        // Meal orders have no page of their own, so this opens the kitchen's list.
+                        <Link href="/meals/orders" className="whitespace-nowrap font-medium underline-offset-2 hover:underline">
+                          Meal <span className="num">#{l.mealOrderId}</span>
+                        </Link>
+                      ) : (
+                        <span className="text-app-faint">–</span>
+                      )}
                     </td>
                     <td className={td}>{l.label}</td>
                     <td className={cn(td, "num text-right")}>{formatPence(l.grossPence)}</td>

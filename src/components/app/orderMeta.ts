@@ -1,5 +1,5 @@
 import { CheckCircle, Circle, CircleDashed, Truck, XCircle } from "@phosphor-icons/react/dist/ssr";
-import type { OrderStatus, PaymentStatus } from "@/lib/types/api";
+import type { Order, OrderStatus, PaymentStatus } from "@/lib/types/api";
 import type { Tone } from "./ui";
 
 // Linear-style status icons: shape carries meaning as well as colour.
@@ -16,5 +16,8 @@ export const paymentMeta: Record<PaymentStatus, { label: string; tone: Tone }> =
   UNPAID: { label: "Unpaid", tone: "amber" },
   REFUNDED: { label: "Refunded", tone: "neutral" },
 };
+
+/** A donation run charges nobody, whatever paymentStatus says. */
+export const paymentFor = (o: Pick<Order, "donationId" | "paymentStatus">): { label: string; tone: Tone } => (o.donationId ? { label: "No charge", tone: "neutral" } : paymentMeta[o.paymentStatus]);
 
 export const ORDER_FLOW: OrderStatus[] = ["PENDING", "ASSIGNED", "IN_TRANSIT", "DELIVERED"];

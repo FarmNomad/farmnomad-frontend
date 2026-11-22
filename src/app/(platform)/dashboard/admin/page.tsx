@@ -23,18 +23,19 @@ export default function AdminOverview() {
   const { data: donations } = useAllDonationsAdminQuery();
 
   const now = Date.now();
-  const paid = orders?.filter((o) => o.paymentStatus === "PAID") ?? [];
-  const sales30 = paid.filter((o) => now - +new Date(o.createdAt) < 30 * DAY).reduce((s, o) => s + o.total, 0);
+  // Donation runs charge nobody, so they're never sales. The count covers the same 30 days as the total.
+  const paid30 = orders?.filter((o) => !o.donationId && o.paymentStatus === "PAID" && now - +new Date(o.createdAt) < 30 * DAY) ?? [];
+  const sales30 = paid30.reduce((s, o) => s + o.total, 0);
   const today = orders?.filter((o) => new Date(o.createdAt).toDateString() === new Date().toDateString()).length ?? 0;
   const newUsers = users?.filter((u) => u.createdAt && now - +new Date(u.createdAt) < 7 * DAY).length ?? 0;
   const rescued = donations?.filter((d) => d.status !== "PENDING").reduce((s, d) => s + d.quantity, 0) ?? 0;
 
   const waitingOrgs = orgs?.filter((o) => o.verificationLevel === "PENDING") ?? [];
-  const noDriver = orders?.filter((o) => o.status === "PENDING" && !o.driverId && o.paymentStatus === "PAID") ?? [];
+  const noDriver = orders?.filter((o) => o.status === "PENDING" && !o.driverId && (o.donationId || o.paymentStatus === "PAID")) ?? [];
   const stale = products?.filter((p) => p.bestBeforeDate && daysUntil(p.bestBeforeDate) < 0) ?? [];
   const attention = [
     { n: waitingOrgs.length, icon: SealCheck, title: "organisations waiting for verification", href: "/admin/verifications", cta: "Review" },
-    { n: noDriver.length, icon: Truck, title: "paid orders with no driver yet", href: "/admin/orders?status=PENDING", cta: "Assign" },
+    { n: noDriver.length, icon: Truck, title: noDriver.length === 1 ? "order waiting for a driver" : "orders waiting for a driver", href: "/admin/orders?status=PENDING", cta: "Assign" },
     { n: stale.length, icon: CalendarX, title: "listings past their best-before date", href: "/admin/listings?f=past", cta: "Check" },
   ].filter((a) => a.n > 0);
 
@@ -45,7 +46,7 @@ export default function AdminOverview() {
       <PageHeader title="Overview" description="Everything happening on FarmNomad, and what needs a person." />
       <div className="grid gap-6 px-4 md:px-8">
         <dl className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-          <Stat label="Sales, last 30 days" value={orders ? gbp(sales30) : null} sub={orders ? `${paid.length} paid orders` : undefined} />
+          <Stat label="Sales, last 30 days" value={orders ? gbp(sales30) : null} sub={orders ? `${paid30.length} paid ${paid30.length === 1 ? "order" : "orders"}` : undefined} />
           <Stat label="Orders today" value={orders ? String(today) : null} sub={orders ? `${orders.filter((o) => ["PENDING", "ASSIGNED", "IN_TRANSIT"].includes(o.status)).length} in progress` : undefined} />
           <Stat label="People on FarmNomad" value={users ? String(users.length) : null} sub={users ? `${newUsers} joined this week` : undefined} />
           <Stat label="Units of food rescued" value={donations ? String(rescued) : null} sub="Claimed donations" />
@@ -115,7 +116,11 @@ export default function AdminOverview() {
                       </span>
                     </span>
                     <span className="num hidden text-ui-sm text-app-faint sm:block">{orderRef(o.id)}</span>
-                    <span className="num w-16 text-right">{gbp(o.total)}</span>
+                    {o.donationId ? (
+                      <span className="w-16 whitespace-nowrap text-right text-ui-sm text-app-faint">No charge</span>
+                    ) : (
+                      <span className="num w-16 text-right">{gbp(o.total)}</span>
+                    )}
                   </li>
                 );
               }) ?? (

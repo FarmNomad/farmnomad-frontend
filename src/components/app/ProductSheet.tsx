@@ -122,6 +122,11 @@ export function ProductSheet() {
     } catch (err) {
       const missing = profileIncomplete(err);
       if (missing) return setServerGate(missing);
+      // We stopped waiting, but the server may not have: saving again could add the photos twice.
+      if ((err as { status?: string }).status === "TIMEOUT_ERROR") {
+        toast.error("This is taking too long", { description: "It may still have saved. Check the listing before you try again." });
+        return;
+      }
       toast.error("That didn't save", { description: apiError(err, "Check your connection and try again.") });
     }
   }

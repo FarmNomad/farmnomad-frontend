@@ -5,8 +5,20 @@ import withPWAInit from "@ducanh2912/next-pwa";
 const withPWA = withPWAInit({
   dest: "public",
   register: true,
+  // Keep the plugin's caching for our own files, but replace its "cross-origin" rule (same
+  // cacheName). That rule saved API responses for an hour by URL alone and served them when the
+  // network took over 10s, so one account could be shown another's data.
+  extendDefaultRuntimeCaching: true,
   workboxOptions: {
     skipWaiting: true,
+    importScripts: ["/sw-cleanup.js"],
+    runtimeCaching: [
+      {
+        urlPattern: ({ sameOrigin, url }) => !sameOrigin && url.pathname.startsWith("/api/"),
+        handler: "NetworkOnly",
+        options: { cacheName: "cross-origin" },
+      },
+    ],
   },
   // keeps SW off in dev so it doesn't mess caching while you build
   disable: process.env.NODE_ENV === "development",
