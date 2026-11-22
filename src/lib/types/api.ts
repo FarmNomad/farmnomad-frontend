@@ -134,7 +134,7 @@ export type ProductInput = Pick<Product, "name" | "price" | "quantityAvailable">
  * What create and update send. The real API takes multipart: newly picked photos travel as files
  * (`coverImage` is the cover, `images` the rest). The URL fields are only used by the sample data.
  */
-export type ProductWrite = ProductInput & { coverImage?: File; images?: File[] };
+export type ProductWrite = ProductInput & { coverImage?: File; images?: File[]; removeImageUrls?: string[] };
 
 // ─── UI-derived helpers (not part of the API) ───
 export type StockState = "active" | "low" | "expiring" | "expired" | "out";
@@ -184,7 +184,7 @@ export interface Meal {
   available: boolean;
   kitchenId?: number;
   createdAt?: string;
-  // UI enrichments. CONFIRM WITH BACKEND: not in the documented meal body yet.
+  // kitchenArea and farms aren't in the API.
   kitchenName?: string;
   kitchenArea?: string;
   dietary?: string[];
@@ -193,11 +193,18 @@ export interface Meal {
 export type MealInput = Pick<Meal, "name" | "description" | "price" | "portionsAvailable" | "cuisine" | "imageUrls" | "available"> & Partial<Pick<Meal, "dietary" | "farms">>;
 
 /**
- * CONFIRM WITH BACKEND: the spec has no meal ordering endpoint. The demo assumes
- * POST /meal-orders {mealId, quantity}, GET /meal-orders/my, GET /meal-orders/kitchen,
+ * Meal orders:
+ * POST /meal-orders {mealId, quantity, note}, GET /meal-orders/my, GET /meal-orders/kitchen,
  * PATCH /meal-orders/{id}/status?status=.
  */
 export type MealOrderStatus = "NEW" | "PREPARING" | "READY" | "COLLECTED" | "CANCELLED";
+/** The card is held at order (HELD) and charged when the kitchen starts cooking (CAPTURED). */
+export type MealPaymentStatus = "AWAITING_PAYMENT" | "HELD" | "CAPTURED" | "RELEASED" | "REFUNDED" | "EXPIRED";
+/** What POST /meal-orders answers: where to send the diner to pay. */
+export interface MealCheckout {
+  orderId: number;
+  checkoutUrl: string;
+}
 export interface MealOrder {
   id: number;
   mealId: number;
@@ -212,6 +219,8 @@ export interface MealOrder {
   createdAt: string;
   updatedAt?: string;
   note?: string;
+  /** Absent means no payment was recorded, so it mustn't be cooked. */
+  paymentStatus?: MealPaymentStatus | null;
 }
 
 // ─── R2: donations, organisations, messages (spec §2, §3.9–3.12) ───
@@ -286,7 +295,7 @@ export interface CropScan {
   prevention?: string[];
   recommendation?: string; // older single-text field from spec §3.14, shown if the lists are empty
   createdAt: string;
-  // For the admin list. CONFIRM WITH BACKEND: GET /crop-scans?farmerId= (ADMIN) isn't in the spec yet.
+  // For the admin list. GET /crop-scans?farmerId= (ADMIN).
   farmerId?: number;
   farmerName?: string;
   farmerPostcode?: string;

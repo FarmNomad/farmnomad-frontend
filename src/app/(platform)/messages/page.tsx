@@ -233,7 +233,7 @@ function ThreadView({ t, meId, onBack }: { t: Pick<Thread, "id" | "name" | "mess
   );
 }
 
-/** The people on your orders (every account, for an admin). */
+/** Who this person can message: GET /messages/contacts. */
 function PeoplePicker({ onClose, onPick }: { onClose: () => void; onPick: (id: number, name: string) => void }) {
   const { data, isError } = usePeopleQuery();
   return (

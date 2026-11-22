@@ -14,6 +14,7 @@ import { Confirm, Filters, Search, Table, td, tr } from "@/components/app/admin/
 import { MealSheet, Switch } from "@/components/app/meals/MealSheet";
 import { MealArt } from "@/components/app/meals/meta";
 import { EmptyState, IconButton, Pill, gbp } from "@/components/app/ui";
+import { LoadError } from "@/components/app/states";
 import { cn } from "@/lib/cn";
 
 type Tab = "produce" | "meals";
@@ -159,7 +160,7 @@ function Produce({ q, setQ, f, setF }: { q: string; setQ: (v: string) => void; f
 }
 
 function Meals({ q, setQ }: { q: string; setQ: (v: string) => void }) {
-  const { data, isLoading } = useAllMealsAdminQuery();
+  const { data, isLoading, isError, refetch } = useAllMealsAdminQuery();
   const [update] = useUpdateMealMutation();
   const [del, { isLoading: busy }] = useDeleteMealMutation();
   const [editing, setEditing] = useState<Meal | null>(null);
@@ -183,7 +184,7 @@ function Meals({ q, setQ }: { q: string; setQ: (v: string) => void }) {
       <div className="flex justify-end">
         <Search value={q} onChange={setQ} placeholder="Search meal, kitchen or cuisine" />
       </div>
-      <Table head={["Meal", "Kitchen", "Price", "Portions", "On NomadEat", ""]} minWidth={820} loading={isLoading} empty={!rows.length && !isLoading ? <EmptyState icon={<ForkKnife className="size-5" />} title="No meals match" body="Try another search." /> : undefined}>
+      <Table head={["Meal", "Kitchen", "Price", "Portions", "On NomadEat", ""]} minWidth={820} loading={isLoading} empty={!rows.length && !isLoading ? isError ? <LoadError what="meals" onRetry={refetch} /> : <EmptyState icon={<ForkKnife className="size-5" />} title={data?.length ? "No meals match" : "No meals yet"} body={data?.length ? "Try another search." : "Meals appear here as kitchens add them."} /> : undefined}>
         {rows.map((m) => (
           <tr key={m.id} className={tr}>
             <td className={td}>
@@ -204,8 +205,10 @@ function Meals({ q, setQ }: { q: string; setQ: (v: string) => void }) {
                 label={`${m.name} on NomadEat`}
                 disabled={m.portionsAvailable === 0 && !m.available}
                 onChange={(v) => {
-                  update({ id: m.id, available: v });
-                  toast(v ? `${m.name} is back on NomadEat` : `${m.name} is hidden from diners`);
+                  update({ id: m.id, available: v })
+                    .unwrap()
+                    .then(() => toast(v ? `${m.name} is back on NomadEat` : `${m.name} is hidden from diners`))
+                    .catch(() => toast.error(`Couldn't update ${m.name}`));
                 }}
               />
             </td>

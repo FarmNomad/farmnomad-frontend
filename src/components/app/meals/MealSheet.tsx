@@ -26,7 +26,7 @@ export function MealSheet({ open, onClose }: { open: Meal | "new" | null; onClos
   const editing = open && open !== "new" ? open : null;
   const [create, c] = useCreateMealMutation();
   const [update, u] = useUpdateMealMutation();
-  const { data: products } = useListProductsQuery(undefined, { skip: !open || !FEATURES.mealExtras });
+  const { data: products } = useListProductsQuery(undefined, { skip: !open || !FEATURES.mealSourceFarms });
   const [upload, photo] = useUploadImageMutation();
   const farms = useMemo(() => [...new Set(products?.map((p) => p.farmerName).filter(Boolean) as string[])].sort(), [products]);
   const [f, setF] = useState(EMPTY);
@@ -157,6 +157,10 @@ export function MealSheet({ open, onClose }: { open: Meal | "new" | null; onClos
             ))}
           </div>
         </div>
+        </>
+        )}
+        {FEATURES.mealSourceFarms && (
+        <>
         <div className="grid gap-2" role="group" aria-label="Made with produce from">
           <p className="font-medium">Made with produce from</p>
           <p className="-mt-1 text-ui-sm text-app-faint">Diners see which FarmNomad farms your ingredients came from.</p>

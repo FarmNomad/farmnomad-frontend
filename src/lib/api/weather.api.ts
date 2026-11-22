@@ -1,19 +1,42 @@
-import type { PlantingAdvice, WeatherConditions } from "@/lib/types/api";
-import { api } from "./farmnomad";
+import type { CropAdvice, FrostRisk, PlantingAdvice, WeatherConditions } from "@/lib/types/api";
+import { api, asList, readAs } from "./farmnomad";
 
 /**
  * Weather & planting (spec §7.13), all through the Spring Boot API:
  *   GET /weather/conditions?lat=&lon= → WeatherConditions (soil temp at 6 cm, frost risk, rain)
  *   GET /weather/planting?lat=&lon=   → PlantingAdvice    (readyToPlantOut / readyToSow, with blockers and warnings)
  * The crop calendar lives in the AI service; there is deliberately no calendar in this codebase.
- * CONFIRM WITH BACKEND: paths and response fields.
  */
 type At = { lat: number; lon: number };
+const FROST_VALUES: Record<FrostRisk, true> = { NONE: true, LOW: true, MEDIUM: true, HIGH: true };
+
+/** A field sent as null reads as "not sent": the widgets only check for undefined. */
+const withoutNulls = (o: object) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null));
+
+function readConditions(data: unknown): WeatherConditions | null {
+  if (!data || typeof data !== "object") return null;
+  const c = withoutNulls(data) as Partial<WeatherConditions>;
+  if (!Number.isFinite(c.soilTemp6cm) || !Number.isFinite(c.rainNext24hMm) || !c.frostRisk || !Object.hasOwn(FROST_VALUES, c.frostRisk)) return null;
+  const daily = Array.isArray(c.daily) && c.daily.every((d) => Number.isFinite(d?.tempMax) && Number.isFinite(d?.tempMin) && Number.isFinite(d?.rainMm)) ? c.daily : undefined;
+  return { ...(c as WeatherConditions), daily };
+}
+
+function readPlanting(data: unknown): PlantingAdvice | null {
+  const p = data as { readyToPlantOut?: unknown; readyToSow?: unknown; notReady?: unknown } | null;
+  const crops = (list: unknown) => asList<CropAdvice>(list)?.map((a) => ({ ...(withoutNulls(a) as CropAdvice), blockers: a.blockers ?? [], warnings: a.warnings ?? [] }));
+  const readyToPlantOut = crops(p?.readyToPlantOut);
+  const readyToSow = crops(p?.readyToSow);
+  return readyToPlantOut && readyToSow ? { readyToPlantOut, readyToSow, notReady: crops(p?.notReady) } : null;
+}
 
 const weatherApi = api.injectEndpoints({
   endpoints: (b) => ({
-    conditions: b.query<WeatherConditions, At>({ query: ({ lat, lon }) => ({ url: "/weather/conditions", params: { lat, lon } }) }),
-    planting: b.query<PlantingAdvice, At>({ query: ({ lat, lon }) => ({ url: "/weather/planting", params: { lat, lon } }) }),
+    conditions: b.query<WeatherConditions, At>({
+      queryFn: ({ lat, lon }, _api, _extra, fetch) => readAs(fetch, { url: "/weather/conditions", params: { lat, lon } }, readConditions),
+    }),
+    planting: b.query<PlantingAdvice, At>({
+      queryFn: ({ lat, lon }, _api, _extra, fetch) => readAs(fetch, { url: "/weather/planting", params: { lat, lon } }, readPlanting),
+    }),
   }),
 });
 

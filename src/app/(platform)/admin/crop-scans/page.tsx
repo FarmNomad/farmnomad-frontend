@@ -29,12 +29,12 @@ const match: Record<F, (s: CropScan) => boolean> = {
 /**
  * Admin crop scans: every farmer's diagnoses, to help a farmer who asks, remove a wrong or
  * unsuitable photo (DELETE /crop-scans/{id} as ADMIN), and spot a disease turning up on several
- * farms at once. List endpoint assumed: GET /crop-scans?farmerId= (not in the spec yet).
+ * farms at once. The list is GET /crop-scans?farmerId=.
  */
 export default function AdminCropScans() {
   const [farmerId, setFarmerId] = useState<number | undefined>(() => (typeof window === "undefined" ? undefined : Number(new URLSearchParams(window.location.search).get("farmerId")) || undefined));
   const [now] = useState(() => Date.now());
-  const { data, isLoading } = useAllCropScansQuery(farmerId ? { farmerId } : undefined);
+  const { data, isLoading, isError, refetch } = useAllCropScansQuery(farmerId ? { farmerId } : undefined);
   const [del, { isLoading: deleting }] = useDeleteCropScanMutation();
   const [f, setF] = useState<F>("all");
   const [q, setQ] = useState("");
@@ -96,7 +96,7 @@ export default function AdminCropScans() {
           ).map(([k, v]) => (
             <div key={k} className="rounded-xl p-4 shadow-[0_0_0_1px_var(--a-line)]">
               <dt className="text-ui-sm text-app-muted">{k}</dt>
-              <dd className="num mt-2 font-display text-[28px] font-medium leading-none tracking-[-0.03em]">{v === null ? <Skeleton className="h-7 w-10" /> : v}</dd>
+              <dd className="num mt-2 font-display text-[28px] font-medium leading-none tracking-[-0.03em]">{v !== null ? v : isError ? "–" : <Skeleton className="h-7 w-10" />}</dd>
             </div>
           ))}
         </dl>
@@ -152,7 +152,7 @@ export default function AdminCropScans() {
             </div>
           ) : !rows.length ? (
             <div className="rounded-xl shadow-[0_0_0_1px_var(--a-line)]">
-              <EmptyState icon={<Scan className="size-5" />} title={data?.length ? "No scans match" : "All-farm scans aren't available yet"} body={data?.length ? "Try another filter or clear the search." : "The server can't list every farmer's scans yet. Farmers can still see their own."} />
+              <EmptyState icon={<Scan className="size-5" />} title={data?.length ? "No scans match" : isError ? "We couldn't load crop scans" : "No scans yet"} body={data?.length ? "Try another filter or clear the search." : isError ? "The server may be waking up, or your connection dropped." : "Scans appear here as farmers use the crop scanner."} action={isError && !data ? <Button onClick={refetch}>Try again</Button> : undefined} />
             </div>
           ) : (
             <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -163,7 +163,7 @@ export default function AdminCropScans() {
                     <button onClick={() => setOpen(s)} className="group block w-full overflow-hidden rounded-xl text-left shadow-[0_0_0_1px_var(--a-line)] transition-shadow hover:shadow-[0_0_0_1px_var(--a-line-strong),0_8px_20px_-12px_rgb(0_0_0/0.2)]">
                       <div className="relative aspect-[4/3] overflow-hidden bg-black">
                         {/* eslint-disable-next-line @next/next/no-img-element -- hosted scan photos of any size */}
-                        <img src={s.imageUrl} alt="" className="size-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
+                        <img src={s.imageUrl || undefined} alt="" className="size-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
                         <span className="absolute left-2 top-2 rounded-full bg-app-panel shadow-[0_1px_2px_rgb(0_0_0/0.25)]">
                           <Pill tone={sev.tone}>{sev.label}</Pill>
                         </span>
@@ -191,7 +191,7 @@ export default function AdminCropScans() {
         {open && (
           <div className="grid gap-5 px-5 py-5">
             {/* eslint-disable-next-line @next/next/no-img-element -- hosted scan photo */}
-            <img src={open.imageUrl} alt="The farmer's photo" className="aspect-[4/3] w-full rounded-xl bg-black object-contain" />
+            <img src={open.imageUrl || undefined} alt="The farmer's photo" className="aspect-[4/3] w-full rounded-xl bg-black object-contain" />
             <div className="flex flex-wrap gap-2">
               {open.farmerId && (
                 <Link href={`/messages?to=${open.farmerId}&name=${encodeURIComponent(open.farmerName ?? "")}`}>

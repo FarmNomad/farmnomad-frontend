@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ArrowLeft, ChatsCircle, ForkKnife, MapPin, Plant, Storefront } from "@phosphor-icons/react/dist/ssr";
 import { useGetMealQuery, useListMealsQuery, useMeQuery, useOrderMealMutation } from "@/lib/api/farmnomad";
@@ -12,6 +12,8 @@ import { DietTags, MealArt } from "@/components/app/meals/meta";
 import { Button, EmptyState, Skeleton, gbp } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
 import { FEATURES } from "@/lib/features";
+import { apiError } from "@/lib/api/errors";
+import { PaymentCancelled } from "@/components/app/meals/PaymentNotice";
 
 /** One meal: what it is, who cooks it, which farms it came from, and order. */
 export default function MealPage() {
@@ -23,6 +25,19 @@ export default function MealPage() {
   const [qty, setQty] = useState(1);
   const [note, setNote] = useState("");
   const [viewer, setViewer] = useState<number | null>(null);
+  const [leaving, setLeaving] = useState(false);
+  // A second click can land before the disabled button renders, and would reserve the portions twice.
+  const starting = useRef(false);
+
+  // Back from Stripe can restore this page as it was left, with the button still disabled.
+  useEffect(() => {
+    const reset = () => {
+      starting.current = false;
+      setLeaving(false);
+    };
+    window.addEventListener("pageshow", reset);
+    return () => window.removeEventListener("pageshow", reset);
+  }, []);
 
   if (isLoading)
     return (
@@ -53,14 +68,21 @@ export default function MealPage() {
   const more = all?.filter((x) => x.kitchenId === m.kitchenId && x.id !== m.id).slice(0, 3) ?? [];
 
   async function place() {
-    if (!m) return;
+    if (!m || starting.current) return;
+    starting.current = true;
     try {
-      await order({ mealId: m.id, quantity: qty, note: note.trim() || undefined }).unwrap();
-      toast.success("Order sent to the kitchen", { description: `${qty} × ${m.name} from ${m.kitchenName}. We'll tell you when it's ready.` });
-      setQty(1);
-      setNote("");
+      const res = await order({ mealId: m.id, quantity: qty, note: note.trim() || undefined }).unwrap();
+      // Only ever follow a web address. Without one there is no payment, so no order to announce.
+      if (!/^https?:\/\//i.test(res?.checkoutUrl ?? "")) {
+        starting.current = false;
+        toast.error("Couldn't open payment", { description: "The server didn't send a payment link. You haven't been charged." });
+        return;
+      }
+      setLeaving(true);
+      window.location.assign(res.checkoutUrl);
     } catch (e) {
-      toast.error((e as { data?: { message?: string } })?.data?.message ?? "Couldn't place the order");
+      starting.current = false;
+      toast.error("Couldn't start your order", { description: apiError(e, "You haven't been charged. Try again in a moment.") });
     }
   }
 
@@ -70,6 +92,9 @@ export default function MealPage() {
         <Link href="/nomadeat" className="inline-flex items-center gap-1.5 text-app-muted transition-colors hover:text-app-text">
           <ArrowLeft className="size-4" /> NomadEat
         </Link>
+      </div>
+      <div className="mx-auto mt-4 max-w-[1100px] px-4 empty:hidden md:px-8">
+        <PaymentCancelled />
       </div>
       <div className="mx-auto mt-5 grid max-w-[1100px] items-start gap-8 px-4 md:grid-cols-2 md:gap-12 md:px-8">
         <div className="grid gap-3">
@@ -102,16 +127,22 @@ export default function MealPage() {
           {!out && !mineToCook && !FEATURES.mealOrders && (
             <p className="mt-5 rounded-2xl bg-app-hover p-4 text-app-muted">Ordering from NomadEat opens soon. You can browse the kitchens and their menus for now.</p>
           )}
-          {!out && !mineToCook && FEATURES.mealOrders && (
+          {(!out || leaving) && !mineToCook && FEATURES.mealOrders && (
             <div className="mt-5 grid gap-3 rounded-2xl p-4 shadow-[0_0_0_1px_var(--a-line)]">
               <div className="flex items-center gap-3">
                 <QtyStepper value={qty} max={m.portionsAvailable} label={m.name} removable={false} onChange={(n) => setQty(Math.max(1, n))} />
-                <Button variant="primary" className="h-10 flex-1" disabled={ordering} onClick={place}>
-                  Order · <span className="num">{gbp(m.price * qty)}</span>
+                <Button variant="primary" className="h-10 flex-1" disabled={ordering || leaving} onClick={place}>
+                  {ordering || leaving ? (
+                    "Opening payment…"
+                  ) : (
+                    <>
+                      Continue to payment · <span className="num">{gbp(m.price * qty)}</span>
+                    </>
+                  )}
                 </Button>
               </div>
               <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={120} placeholder="Note for the kitchen (optional)" className="h-9 rounded-[8px] bg-app-hover px-3 text-ui outline-none placeholder:text-app-faint focus:shadow-[inset_0_0_0_1px_var(--a-accent)]" />
-              <p className="text-ui-sm text-app-faint">Collect from the kitchen when it&apos;s ready. Pay on collection while NomadEat is in preview.</p>
+              <p className="text-ui-sm text-app-faint">Your card is held now and only charged when the kitchen starts cooking. If they can&apos;t make it, you aren&apos;t charged. Collect from the kitchen when it&apos;s ready.</p>
             </div>
           )}
           {mineToCook && (

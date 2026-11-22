@@ -11,7 +11,7 @@ import { ImageUploadZone, type ScanPhase } from "@/components/app/farm-tools/Ima
 import { Button, Skeleton, relDay } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
 import { FEATURES } from "@/lib/features";
-import { NotAvailableYet } from "@/components/app/states";
+import { LoadError, NotAvailableYet } from "@/components/app/states";
 
 const msg = (e: unknown, fallback: string) => (e as { data?: { message?: string } })?.data?.message ?? fallback;
 
@@ -20,7 +20,7 @@ const msg = (e: unknown, fallback: string) => (e as { data?: { message?: string 
  * the backend calls farmnomad-ai and saves the result) → history (GET /crop-scans/my).
  */
 export default function CropScannerPage() {
-  const { data: history, isLoading } = useMyCropScansQuery();
+  const { data: history, isLoading, isError, refetch } = useMyCropScansQuery();
   const [upload] = useUploadImageMutation();
   const [diagnose] = useDiagnoseMutation();
   const [remove, { isLoading: deleting }] = useDeleteCropScanMutation();
@@ -69,7 +69,7 @@ export default function CropScannerPage() {
 
   const open = (s: CropScan) => {
     setCurrent(s);
-    setPreview(s.imageUrl);
+    setPreview(s.imageUrl || null);
     setPhase("done");
     setError(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -137,6 +137,8 @@ export default function CropScannerPage() {
                 <Skeleton key={i} className="aspect-[4/5] rounded-xl" />
               ))}
             </div>
+          ) : isError && !history ? (
+            <LoadError what="your past scans" onRetry={refetch} />
           ) : !history?.length ? (
             <p className="rounded-xl p-5 text-app-faint shadow-[0_0_0_1px_var(--a-line)]">Your scans are saved here so you can track a problem over time.</p>
           ) : (
@@ -155,7 +157,7 @@ export default function CropScannerPage() {
                     >
                       <div className="relative aspect-[4/3] overflow-hidden bg-black">
                         {/* eslint-disable-next-line @next/next/no-img-element -- hosted scan photos of any size */}
-                        <img src={s.imageUrl} alt="" className="size-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
+                        <img src={s.imageUrl || undefined} alt="" className="size-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
                       </div>
                       <div className="p-3">
                         <p className="truncate font-medium">{healthy ? "Healthy" : s.diagnosis}</p>

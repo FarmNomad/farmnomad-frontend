@@ -1,6 +1,5 @@
 import {
   createApi,
-  type BaseQueryFn,
   type FetchArgs,
   type FetchBaseQueryError,
 } from "@reduxjs/toolkit/query/react";
@@ -13,6 +12,7 @@ import type {
   Donation,
   Meal,
   MealInput,
+  MealCheckout,
   MealOrder,
   MealOrderStatus,
   Message,
@@ -30,42 +30,18 @@ import type { EarningLine, EarningsSummary, PayoutLine } from "@/lib/types/earni
 import type { DriverProfile, Farm, Kitchen, ProfileStatus } from "@/lib/types/profile";
 
 /**
- * Where the data comes from: the Spring Boot API (NEXT_PUBLIC_API_URL), for everything.
- * There is no sample data. The few routes the backend hasn't built are listed here, and answer
- * empty or "not available yet" without a request being sent. See also lib/features.ts.
+ * Where the data comes from: the Spring Boot API (NEXT_PUBLIC_API_URL), for every request.
+ * There is no sample data and no route is answered in the browser.
  */
-type Route = [method: string, path: RegExp];
-
-// Lists with no endpoint yet: empty, so nobody sees made-up figures as if they were their own.
-const NO_LIST_YET: Route[] = [
-  ["GET", /^\/analytics\/farmer\/revenue$/],
-  ["GET", /^\/meal-orders\/(my|kitchen)$/],
-  ["GET", /^\/crop-scans$/], // every farmer's scans, for admins (/crop-scans/my does exist)
-];
-// Actions and readings with no endpoint yet.
-const NOT_BUILT_YET: Route[] = [
-  ["POST", /^\/meal-orders$/],
-  ["PATCH", /^\/meal-orders\/\d+\/status$/],
-  ["POST", /^\/crop-scans\/diagnose$/],
-  ["GET", /^\/weather\//],
-];
-
-const baseQuery: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> = (args, baseApi, extra) => {
-  const path = (typeof args === "string" ? args : args.url).split("?")[0];
-  const method = (typeof args === "string" ? "GET" : (args.method ?? "GET")).toUpperCase();
-  const hit = (routes: Route[]) => routes.some(([m, r]) => m === method && r.test(path));
-  if (hit(NO_LIST_YET)) return { data: [] };
-  if (hit(NOT_BUILT_YET)) return { error: { status: 501, data: { message: "This isn't available yet." } } };
-  return liveBaseQuery(args, baseApi, extra);
-};
+const baseQuery = liveBaseQuery;
 
 /**
  * Products are the only multipart resource. On the real API the body is form data: the text
  * fields, `tags` repeated once per tag, `coverImage` as one file and `images` as files.
  * No Content-Type is set here; the browser adds it with the multipart boundary.
- * Photos already on the server are not re-sent (the API takes files, not URLs).
+ * Photos already on the server are not re-sent; the ones taken out go as `removeImageUrls`.
  */
-function productBody({ coverImage, images, ...fields }: Partial<ProductWrite>): FormData {
+function productBody({ coverImage, images, removeImageUrls, ...fields }: Partial<ProductWrite>): FormData {
   const fd = new FormData();
   const text = (k: string, v: string | number | undefined | null) => {
     if (v !== undefined && v !== null && v !== "") fd.append(k, String(v));
@@ -80,10 +56,11 @@ function productBody({ coverImage, images, ...fields }: Partial<ProductWrite>): 
   fields.tags?.forEach((t) => fd.append("tags", t));
   if (coverImage) fd.append("coverImage", coverImage);
   images?.forEach((f) => fd.append("images", f));
+  removeImageUrls?.forEach((url) => fd.append("removeImageUrls", url)); // one part per photo
   return fd;
 }
 
-type Fetch = (arg: string | FetchArgs) => PromiseLike<{ data?: unknown; error?: FetchBaseQueryError }> | { data?: unknown; error?: FetchBaseQueryError };
+export type Fetch = (arg: string | FetchArgs) => PromiseLike<{ data?: unknown; error?: FetchBaseQueryError }> | { data?: unknown; error?: FetchBaseQueryError };
 
 /**
  * Orders carry the farm, address and price, but not the photo, and older orders can have gaps.
@@ -165,7 +142,7 @@ const surplusFromProduct = (p: Product): Surplus => ({
 });
 
 /** The API's organisation, in the shape the pages use. */
-type ApiOrganisation = { id: number; name: string; type: Organisation["type"]; charityNumber?: string | null; registrationStatus?: string | null; verifiedAt?: string | null; userId?: number; userName?: string | null };
+type ApiOrganisation = { id: number; name: string; description?: string | null; type: Organisation["type"]; charityNumber?: string | null; registrationStatus?: string | null; verifiedAt?: string | null; userId?: number; userName?: string | null };
 // CONFIRM WITH BACKEND: the exact registrationStatus values. Matched whole, never by substring:
 // "INACTIVE" contains "ACTIVE" and "PENDING_VERIFICATION" contains "VERIF", and neither is verified.
 const VERIFIED_STATUSES = new Set(["VERIFIED", "APPROVED", "ACTIVE"]);
@@ -175,7 +152,7 @@ function toOrganisation(o: ApiOrganisation): Organisation {
   // A stated status always wins: a group that was verified and later turned down keeps its verifiedAt.
   const verified = status ? VERIFIED_STATUSES.has(status) : !!o.verifiedAt;
   const verificationLevel = verified ? "VERIFIED" : PENDING_STATUSES.has(status) ? "PENDING" : "UNVERIFIED";
-  return { id: o.id, name: o.name, type: o.type, charityNumber: o.charityNumber ?? undefined, verificationLevel, userId: o.userId };
+  return { id: o.id, name: o.name, description: o.description ?? undefined, type: o.type, charityNumber: o.charityNumber ?? undefined, verificationLevel, userId: o.userId };
 }
 // CONFIRM WITH BACKEND: the values PATCH /organisations/{id}/status accepts.
 const ORG_STATUS: Record<NonNullable<Organisation["verificationLevel"]>, string> = { VERIFIED: "VERIFIED", PENDING: "PENDING", UNVERIFIED: "REJECTED" };
@@ -192,6 +169,30 @@ const toPayoutLine = (p: ApiPayout): PayoutLine => {
   const status = (p.status ?? "").toUpperCase();
   return { id: p.id, amountPence: p.amountPence, date: p.arrivalDate ?? p.createdAt, status: status === "PAID" ? "PAID" : /^(FAILED|CANCELL?ED)$/.test(status) ? "FAILED" : "PENDING" };
 };
+
+/**
+ * For responses whose shape the API spec doesn't pin down: `read` returns null for one it can't
+ * use, which becomes an error the screen can show rather than a crash while rendering.
+ */
+export async function readAs<T>(fetch: Fetch, arg: string | FetchArgs, read: (data: unknown) => T | null): Promise<{ data: T } | { error: FetchBaseQueryError }> {
+  const res = await fetch(arg);
+  if (res.error) return { error: res.error };
+  const value = read(res.data);
+  if (value !== null) return { data: value };
+  return { error: { status: "CUSTOM_ERROR", error: `Unexpected response from ${typeof arg === "string" ? arg : arg.url}`, data: { message: "The server sent something the app couldn't read." } } };
+}
+/** A plain list, or a Spring page of one. */
+export function asList<T>(data: unknown): T[] | null {
+  if (Array.isArray(data)) return data as T[];
+  const content = (data as { content?: unknown } | null)?.content;
+  return Array.isArray(content) ? (content as T[]) : null;
+}
+
+type ApiMealOrder = Omit<MealOrder, "total"> & { total?: number | null; totalPence?: number | null };
+const toMealOrder = ({ total, totalPence, ...o }: ApiMealOrder): MealOrder => ({ ...o, total: total ?? (totalPence ?? 0) / 100 });
+const readMealOrders = (data: unknown) => asList<ApiMealOrder>(data)?.map(toMealOrder) ?? null;
+/** An order isn't the kitchen's until the diner's card is held. */
+const readKitchenOrders = (data: unknown) => readMealOrders(data)?.filter((o) => o.paymentStatus !== "AWAITING_PAYMENT" && o.paymentStatus !== "EXPIRED") ?? null;
 
 /** A cart line has a name and price; the photo, farm and stock limit come from its product. */
 type ApiCartItem = { id: number; productId: number; productName: string; quantity: number; unitPrice?: number | null };
@@ -236,49 +237,23 @@ function readConfirmation(data: unknown): { data: Order[] } | { error: FetchBase
 }
 
 /** The API says preparedBy; the pages say kitchen. */
-type ApiMeal = Omit<Meal, "kitchenId" | "kitchenName"> & { preparedById?: number; preparedByName?: string };
+type ApiMeal = Omit<Meal, "kitchenId"> & { preparedById?: number; preparedByName?: string };
 const toMeal = ({ preparedById, preparedByName, ...m }: ApiMeal): Meal => ({
   ...m,
   description: m.description ?? "",
   cuisine: m.cuisine ?? "",
   imageUrls: m.imageUrls ?? [],
+  dietary: m.dietary ?? [],
   kitchenId: preparedById,
-  kitchenName: preparedByName,
+  kitchenName: m.kitchenName ?? preparedByName,
 });
 const toMeals = (rows: ApiMeal[] | null) => (rows ?? []).map(toMeal);
-/** Exactly MealRequest. */
-const mealBody = ({ name, description, price, portionsAvailable, cuisine, imageUrls, available }: MealInput): MealInput => ({ name, description, price, portionsAvailable, cuisine, imageUrls, available });
+/** Exactly what MealRequest takes. */
+const mealBody = ({ name, description, price, portionsAvailable, cuisine, imageUrls, available, dietary }: MealInput): MealInput => ({ name, description, price, portionsAvailable, cuisine, imageUrls, available, dietary });
 
 /** The API's message has sentAt. */
 type ApiMessageRow = Omit<Message, "createdAt"> & { sentAt: string };
 const toMessage = ({ sentAt, ...m }: ApiMessageRow): Message => ({ ...m, createdAt: sentAt });
-
-/**
- * Who this person can start a conversation with. There is no directory endpoint, so it is the
- * people on their own orders; an admin sees every account.
- */
-async function contactsFor(fetch: Fetch) {
-  const res = await fetch("/users/me");
-  if (res.error) return { error: res.error };
-  const me = res.data as User;
-  if (me.role === "ADMIN") {
-    const all = await fetch("/users");
-    if (all.error) return { error: all.error };
-    return { data: ((all.data as User[] | null) ?? []).filter((u) => u.id !== me.id).map((u) => ({ id: u.id, name: u.fullName, role: u.role[0] + u.role.slice(1).toLowerCase() })) };
-  }
-  const list = await fetch(me.role === "DRIVER" ? "/orders/assigned" : me.role === "FARMER" ? "/orders/my/farmer" : "/orders/my");
-  if (list.error) return { error: list.error };
-  const people = new Map<number, { id: number; name: string; role: string }>();
-  const add = (id: number | null | undefined, name: string | null | undefined, role: string) => {
-    if (id && id !== me.id && !people.has(id)) people.set(id, { id, name: name || role, role });
-  };
-  for (const o of (list.data as Order[] | null) ?? []) {
-    add(o.farmerId, o.farmName || o.farmerName, "Farm");
-    add(o.driverId, o.driverName, "Driver");
-    add(o.customerId, o.customerName, "Customer");
-  }
-  return { data: [...people.values()] };
-}
 
 export const api = createApi({
   reducerPath: "api",
@@ -527,8 +502,7 @@ export const api = createApi({
       Donation,
       { productId: number; quantity: number; note?: string }
     >({
-      // The API takes the product and the quantity only; a note has nowhere to go yet.
-      query: ({ productId, quantity }) => ({ url: "/donations", method: "POST", body: { productId, quantity } }),
+      query: ({ productId, quantity, note }) => ({ url: "/donations", method: "POST", body: { productId, quantity, note } }),
       invalidatesTags: ["Donation", "Product"],
     }),
     // organisationId is only required when the caller is ADMIN; omitted for ORGANISATION.
@@ -573,8 +547,8 @@ export const api = createApi({
       Organisation,
       Pick<Organisation, "name" | "type" | "charityNumber" | "description">
     >({
-      // The API takes name, type and charityNumber. The owner comes from the session.
-      query: ({ name, type, charityNumber }) => ({ url: "/organisations", method: "POST", body: { name, type, charityNumber } }),
+      // The owner comes from the session.
+      query: ({ name, type, charityNumber, description }) => ({ url: "/organisations", method: "POST", body: { name, type, charityNumber, description } }),
       transformResponse: toOrganisation,
       invalidatesTags: ["Org", "Orgs"],
     }),
@@ -582,10 +556,10 @@ export const api = createApi({
       Organisation,
       { id: number } & Partial<Organisation>
     >({
-      query: ({ id, name, type, charityNumber }) => ({
+      query: ({ id, name, type, charityNumber, description }) => ({
         url: `/organisations/${id}`,
         method: "PUT",
-        body: { name, type, charityNumber },
+        body: { name, type, charityNumber, description },
       }),
       transformResponse: toOrganisation,
       invalidatesTags: ["Org", "Orgs"],
@@ -607,7 +581,14 @@ export const api = createApi({
       invalidatesTags: ["Messages"],
     }),
     people: b.query<{ id: number; name: string; role: string }[], void>({
-      queryFn: (_arg, _api, _extra, fetch) => contactsFor(fetch),
+      queryFn: (_arg, _api, _extra, fetch) =>
+        readAs(fetch, "/messages/contacts", (data) =>
+          asList<{ id: number; name?: string | null; role?: string | null }>(data)?.map(({ id, name, role }) => ({
+            id,
+            name: name || "FarmNomad user",
+            role: role ? role[0].toUpperCase() + role.slice(1).toLowerCase() : "",
+          })) ?? null,
+        ),
       keepUnusedDataFor: 30,
     }),
 
@@ -657,20 +638,21 @@ export const api = createApi({
       invalidatesTags: ["Meal"],
     }),
 
-    // ───────── Meal orders. CONFIRM WITH BACKEND: not in the spec yet. ─────────
+    // ───────── Meal orders ─────────
+    // Reserves the portions and opens payment. The kitchen sees nothing until the hold succeeds.
     orderMeal: b.mutation<
-      MealOrder,
+      MealCheckout,
       { mealId: number; quantity: number; note?: string }
     >({
       query: (body) => ({ url: "/meal-orders", method: "POST", body }),
       invalidatesTags: ["Meal", "MealOrder", "Users", "AdminOrders", "Orgs"],
     }),
     myMealOrders: b.query<MealOrder[], void>({
-      query: () => "/meal-orders/my",
+      queryFn: (_arg, _api, _extra, fetch) => readAs(fetch, "/meal-orders/my", readMealOrders),
       providesTags: ["MealOrder"],
     }),
     kitchenMealOrders: b.query<MealOrder[], void>({
-      query: () => "/meal-orders/kitchen",
+      queryFn: (_arg, _api, _extra, fetch) => readAs(fetch, "/meal-orders/kitchen", readKitchenOrders),
       providesTags: ["MealOrder"],
     }),
     updateMealOrder: b.mutation<
@@ -711,10 +693,9 @@ export const api = createApi({
     verifyEmail: b.mutation<ApiMessage, { token: string }>({
       query: (body) => ({ url: "/auth/verify-email", method: "POST", body }),
     }),
-    // No admin list of meals yet, so this is the public one: meals that are on the menu.
+    // Every meal, including those switched off.
     allMealsAdmin: b.query<Meal[], void>({
-      query: () => "/meals",
-      transformResponse: toMeals,
+      queryFn: (_arg, _api, _extra, fetch) => readAs(fetch, "/admin/meals", (data) => asList<ApiMeal>(data)?.map(toMeal) ?? null),
       providesTags: ["Meal"],
     }),
     deleteUser: b.mutation<null, number>({
@@ -871,9 +852,13 @@ export const api = createApi({
       query: () => ({ url: "/connect/dashboard-link", method: "POST" }),
     }),
 
-    // CONFIRM WITH BACKEND: revenue analytics endpoint is not documented yet.
+    // Daily takings in pounds, 180 days, oldest first.
     farmerRevenue: b.query<{ date: string; value: number }[], void>({
-      query: () => "/analytics/farmer/revenue",
+      queryFn: (_arg, _api, _extra, fetch) =>
+        readAs(fetch, "/analytics/farmer/revenue", (data) => {
+          const days = asList<{ date: string; value: number }>(data);
+          return days?.every((d) => d?.date && Number.isFinite(d.value)) ? [...days].sort((a, b) => a.date.localeCompare(b.date)) : null;
+        }),
     }),
   }),
 });

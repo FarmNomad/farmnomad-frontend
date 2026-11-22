@@ -103,6 +103,8 @@ export function ProductSheet() {
       // Only photos picked just now are sent, as files. The first photo is the cover
       // when it is a new one; photos already on the server stay as they are.
       coverImage: pickedFiles.get(f.photos[0] ?? ""),
+      // Photos that were on the listing when it opened and have been taken out since.
+      removeImageUrls: editing ? [...new Set([editing.coverImageUrl, ...(editing.imageUrls ?? [])])].filter((url): url is string => !!url && !f.photos.includes(url)) : undefined,
       images: f.photos
         .slice(1)
         .map((src) => pickedFiles.get(src))

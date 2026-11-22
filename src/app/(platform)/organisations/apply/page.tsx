@@ -50,7 +50,7 @@ function Status({ org }: { org: Organisation }) {
     e.preventDefault();
     if (!f.name.trim()) return;
     try {
-      await update({ id: org.id, ...f }).unwrap();
+      await update({ id: org.id, type: org.type, ...f }).unwrap();
       toast.success("Organisation details saved");
     } catch {
       toast.error("Couldn't save those details");

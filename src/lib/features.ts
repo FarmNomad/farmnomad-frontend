@@ -1,15 +1,16 @@
-/**
- * Screens whose backend doesn't exist yet. They say so instead of showing made-up data or
- * failing halfway. When an endpoint ships, flip its flag and take its route out of
- * NO_LIST_YET or NOT_BUILT_YET in api/farmnomad.ts.
- */
+/** Switches for features that depend on newer backend endpoints. Set one to false to hide it again. */
 export const FEATURES = {
-  /** POST /meal-orders and the lists that go with it. */
-  mealOrders: false,
-  /** Dietary tags and source farms: MealRequest has no fields for them. */
-  mealExtras: false,
+  /**
+   * Ordering on NomadEat. Keep false until POST /meal-orders returns a Stripe checkoutUrl and
+   * orders carry paymentStatus: the card is held at order and charged when cooking starts.
+   */
+  mealOrders: true,
+  /** Dietary tags on meals. */
+  mealExtras: true,
   /** POST /crop-scans/diagnose. */
-  cropDiagnosis: false,
+  cropDiagnosis: true,
   /** GET /weather/conditions and /weather/planting. */
-  weather: false,
+  weather: true,
+  /** "Made with produce from": the meal API has no field for it, so it would be discarded. */
+  mealSourceFarms: false,
 };
