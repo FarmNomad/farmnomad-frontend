@@ -8,7 +8,8 @@ import { ArrowRight, CaretLeft, CaretRight, MagnifyingGlass, Storefront, UsersTh
 import { useListProductsQuery, useMeQuery } from "@/lib/api/farmnomad";
 import { PRODUCT_CATEGORIES } from "@/lib/types/api";
 import { PageHeader } from "@/components/app/PageHeader";
-import { ProductCard, isSurplus } from "@/components/app/shop/ProductCard";
+import { ProductCard } from "@/components/app/shop/ProductCard";
+import { isSurplus, priceNow } from "@/lib/surplus";
 import { Button, EmptyState, Kbd, Skeleton } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
 import { LoadError } from "@/components/app/states";
@@ -59,15 +60,15 @@ export default function MarketplacePage() {
     const term = q.trim().toLowerCase();
     const list = (data ?? [])
       .filter((p) => cat === "All" || p.category === cat)
-      .filter((p) => p.price >= lo && p.price < hi)
+      .filter((p) => priceNow(p) >= lo && priceNow(p) < hi)
       .filter((p) => !surplusOnly || isSurplus(p))
       .filter((p) => !term || [p.name, p.farmerName, p.category, ...(p.tags ?? [])].join(" ").toLowerCase().includes(term));
     const inStockFirst = (a: (typeof list)[number], b: (typeof list)[number]) => Number(b.quantityAvailable > 0) - Number(a.quantityAvailable > 0);
     return [...list].sort((a, b) => {
       const s = inStockFirst(a, b);
       if (s) return s;
-      if (sort === "price-asc") return a.price - b.price;
-      if (sort === "price-desc") return b.price - a.price;
+      if (sort === "price-asc") return priceNow(a) - priceNow(b);
+      if (sort === "price-desc") return priceNow(b) - priceNow(a);
       if (sort === "best-before") return (a.bestBeforeDate ?? "9").localeCompare(b.bestBeforeDate ?? "9");
       if (sort === "newest") return (b.createdAt ?? "").localeCompare(a.createdAt ?? "");
       return Number(isSurplus(b)) - Number(isSurplus(a));

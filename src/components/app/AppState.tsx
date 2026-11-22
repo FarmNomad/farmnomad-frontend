@@ -8,6 +8,8 @@ import { api } from "@/lib/api/farmnomad";
 
 export type Theme = "system" | "light" | "dark";
 type ProductSheet = { mode: "new" } | { mode: "edit"; product: Product } | null;
+/** true opens it blank; an object opens it filled in, from a suggestion or a product. */
+export type SurplusPreset = { productId?: number; quantity?: number; pricePence?: number | null; endsAt?: string | null; suggestionId?: number };
 
 type Ctx = {
   role: MockRole;
@@ -23,8 +25,8 @@ type Ctx = {
   setCommand: (v: boolean) => void;
   productSheet: ProductSheet;
   setProductSheet: (s: ProductSheet) => void;
-  surplusSheet: boolean;
-  setSurplusSheet: (v: boolean) => void;
+  surplusSheet: boolean | SurplusPreset;
+  setSurplusSheet: (v: boolean | SurplusPreset) => void;
   /** Donate sheet: null closed, {} open, {productId} open with that product picked. */
   donateSheet: { productId?: number } | null;
   setDonateSheet: (v: { productId?: number } | null) => void;
@@ -65,7 +67,7 @@ export function AppState({ children }: { children: ReactNode }) {
   const [mobileNav, setMobileNav] = useState(false);
   const [command, setCommand] = useState(false);
   const [productSheet, setProductSheet] = useState<ProductSheet>(null);
-  const [surplusSheet, setSurplusSheet] = useState(false);
+  const [surplusSheet, setSurplusSheet] = useState<boolean | SurplusPreset>(false);
   const [donateSheet, setDonateSheet] = useState<{ productId?: number } | null>(null);
 
   useEffect(() => {

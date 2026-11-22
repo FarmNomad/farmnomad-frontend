@@ -67,6 +67,21 @@ export interface Product {
   farmerName?: string;
   createdAt?: string;
   updatedAt?: string;
+  /** Surplus deal, set by the farmer: this price, for this many, until this date. See lib/surplus.ts. */
+  surplusPricePence?: number | null;
+  surplusQuantity?: number | null;
+  surplusEndsAt?: string | null;
+}
+/** GET /surplus/suggestions: stock the AI thinks won't sell in time. Only ever a suggestion. */
+export interface SurplusSuggestion {
+  id: number;
+  productId: number;
+  productName: string;
+  quantity: number;
+  suggestedPricePence?: number | null;
+  endsAt?: string | null;
+  /** Why, in plain words, e.g. "Best before Friday and selling slowly." */
+  reason: string;
 }
 
 export interface Order {
@@ -118,6 +133,9 @@ export interface Surplus {
   bestBeforeDate?: string;
   pickupAddress?: string;
   claimedByMe?: boolean;
+  /** Surplus deals only. */
+  pricePence?: number | null;
+  endsAt?: string | null;
 }
 
 export interface Notification {

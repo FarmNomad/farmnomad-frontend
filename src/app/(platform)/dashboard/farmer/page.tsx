@@ -11,6 +11,9 @@ import { daysUntil, stockState, type Order, type Product } from "@/lib/types/api
 import { useApp } from "@/components/app/AppState";
 import { PageHeader } from "@/components/app/PageHeader";
 import { LoadError } from "@/components/app/states";
+import { SurplusSuggestions } from "@/components/app/SurplusSuggestions";
+import { SURPLUS_ACTION } from "@/lib/surplus";
+import { FEATURES } from "@/lib/features";
 import { RevenueChart } from "@/components/app/RevenueChart";
 import { Avatar, Button, Pill, Skeleton, gbp, orderRef, time } from "@/components/app/ui";
 import { statusMeta } from "@/components/app/orderMeta";
@@ -66,7 +69,7 @@ export default function FarmerDashboard() {
               <Gift className="size-4" /> Donate
             </Button>
             <Button onClick={() => setSurplusSheet(true)}>
-              <HandHeart className="size-4" /> Flag surplus
+              <HandHeart className="size-4" /> {SURPLUS_ACTION}
             </Button>
             <Button variant="primary" onClick={() => setProductSheet({ mode: "new" })} kbd="C">
               <Plus weight="bold" className="size-3.5" /> New product
@@ -77,11 +80,12 @@ export default function FarmerDashboard() {
 
       <div className="grid min-w-0 gap-4 px-4 md:px-8 [&>*]:min-w-0">
         {/* KPI strip, Mercury style: one surface, hairline dividers */}
+        <SurplusSuggestions />
         <section aria-label="This month" className="grid grid-cols-2 overflow-hidden rounded-xl shadow-[0_0_0_1px_var(--a-line)] lg:grid-cols-5">
           <Stat label="Orders to pack" value={orders ? String(toPack.length) : null} href="/orders" note={toPack.length ? "Waiting at the farm" : "All packed"} />
           <Stat label="Live listings" value={products ? String(live.length) : null} href="/products" note={`${products?.length ?? 0} products in total`} />
           <Stat label="Need attention" value={products ? String(attention.length) : null} href="/products" note="Low, expiring or out" tone={attention.length ? "amber" : undefined} />
-          <Stat label="Surplus claimed" value={surplus ? String(claimed) : null} href="/surplus/manage" note="Units to food groups" />
+          <Stat label={FEATURES.surplusDeals ? "Surplus sold" : "Surplus claimed"} value={surplus ? String(claimed) : null} href="/surplus/manage" note={FEATURES.surplusDeals ? "Units sold at your surplus price" : "Units to food groups"} />
           <Stat label="Clearing" value={earnings ? formatPence(earnings.clearingPence) : null} href="/earnings" note="Earnings on their way to you" />
         </section>
 
@@ -146,7 +150,7 @@ export default function FarmerDashboard() {
             ) : (
               <ul>
                 {attention.slice(0, 5).map(({ p, s }) => (
-                  <AttentionRow key={p.id} p={p} s={s} onEdit={() => setProductSheet({ mode: "edit", product: p })} onSurplus={() => setSurplusSheet(true)} />
+                  <AttentionRow key={p.id} p={p} s={s} onEdit={() => setProductSheet({ mode: "edit", product: p })} onSurplus={() => setSurplusSheet({ productId: p.id })} />
                 ))}
               </ul>
             )}
@@ -225,7 +229,7 @@ function AttentionRow({ p, s, onEdit, onSurplus }: { p: Product; s: ReturnType<t
       </button>
       {(s === "expiring" || s === "expired") && p.quantityAvailable > 0 ? (
         <Button size="sm" variant="ghost" onClick={onSurplus} className="text-app-text opacity-100 transition-[opacity,transform,background-color] md:translate-x-1 md:opacity-0 md:group-hover:translate-x-0 md:group-hover:opacity-100 md:focus-visible:translate-x-0 md:focus-visible:opacity-100">
-          Flag surplus
+          {SURPLUS_ACTION}
         </Button>
       ) : (
         <Button size="sm" variant="ghost" onClick={onEdit} className="text-app-text opacity-100 transition-[opacity,transform,background-color] md:translate-x-1 md:opacity-0 md:group-hover:translate-x-0 md:group-hover:opacity-100 md:focus-visible:translate-x-0 md:focus-visible:opacity-100">

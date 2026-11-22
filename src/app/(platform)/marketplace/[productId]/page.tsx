@@ -7,7 +7,9 @@ import { ArrowLeft, CalendarBlank, Check, MapPin, Package, Plant, Truck, UsersTh
 import { useGetProductQuery, useListProductsQuery, useMeQuery } from "@/lib/api/farmnomad";
 import { daysUntil } from "@/lib/types/api";
 import { useApp } from "@/components/app/AppState";
-import { ProductCard, isSurplus } from "@/components/app/shop/ProductCard";
+import { ProductCard } from "@/components/app/shop/ProductCard";
+import { DealPrice } from "@/components/app/shop/DealPrice";
+import { buyLimit, dealOf, isSurplus, priceNow, shortDate } from "@/lib/surplus";
 import { Gallery, Lightbox, PhotoGrid } from "@/components/app/shop/Gallery";
 import { QtyStepper } from "@/components/app/shop/QtyStepper";
 import { useCart } from "@/components/app/shop/useCart";
@@ -57,6 +59,8 @@ export default function ProductPage() {
   const town = p.pickupAddress?.split(",").slice(-1)[0]?.trim().replace(/\s+[A-Z]{1,2}\d.*$/, "");
   const more = (all ?? []).filter((x) => x.farmerId === p.farmerId && x.id !== p.id).slice(0, 4);
   const own = role === "FARMER" && !!me && p.farmerId === me.id;
+  const deal = dealOf(p);
+  const limit = buyLimit(p);
 
   return (
     <div className="pb-16">
@@ -92,10 +96,15 @@ export default function ProductPage() {
           </div>
 
           <div className="mt-6 flex items-baseline gap-2">
-            <span className="num font-display text-[34px] font-medium leading-none tracking-[-0.03em]">{gbp(p.price)}</span>
+            <DealPrice p={p} large />
             {p.tags?.[0] && <span className="text-app-muted">{p.tags.find((t) => /per|box|punnet|bag|bunch/i.test(t))?.toLowerCase() ?? "each"}</span>}
           </div>
 
+          {deal && (
+            <p className="mt-3 rounded-lg bg-app-accent-soft px-3 py-2 text-ui-sm text-app-text">
+              Surplus from the farm: <span className="num">{deal.quantity}</span> left at this price{deal.endsAt ? `, until ${shortDate(deal.endsAt)}` : ""}.
+            </p>
+          )}
           <ul className="mt-5 grid gap-2 text-app-muted">
             <li className="flex items-center gap-2.5">
               <Package className="size-4 shrink-0" />
@@ -128,7 +137,7 @@ export default function ProductPage() {
             <div className="mt-7 rounded-xl bg-app-hover p-4 text-app-muted">This sold out. Farms usually relist within the week.</div>
           ) : inCart ? (
             <div className="mt-7 flex flex-wrap items-center gap-3">
-              <QtyStepper value={inCart.quantity} max={p.quantityAvailable} label={p.name} onChange={(n) => setQty(p.id, n)} />
+              <QtyStepper value={inCart.quantity} max={limit} label={p.name} onChange={(n) => setQty(p.id, n)} />
               <Link href="/cart" className="flex-1">
                 <Button variant="primary" className="h-10 w-full">
                   <Check weight="bold" className="size-4" /> In your cart · View cart
@@ -137,9 +146,9 @@ export default function ProductPage() {
             </div>
           ) : (
             <div className="mt-7 flex flex-wrap items-center gap-3">
-              <QtyStepper value={qty} max={p.quantityAvailable} label={p.name} removable={false} onChange={(n) => setLocalQty(Math.max(1, n))} />
-              <Button variant="primary" className="h-10 flex-1" disabled={adding} onClick={() => addToCart(p, qty)}>
-                Add to cart · <span className="num">{gbp(p.price * qty)}</span>
+              <QtyStepper value={Math.min(qty, limit)} max={limit} label={p.name} removable={false} onChange={(n) => setLocalQty(Math.max(1, n))} />
+              <Button variant="primary" className="h-10 flex-1" disabled={adding} onClick={() => addToCart(p, Math.min(qty, limit))}>
+                Add to cart · <span className="num">{gbp(priceNow(p) * Math.min(qty, limit))}</span>
               </Button>
             </div>
           )}

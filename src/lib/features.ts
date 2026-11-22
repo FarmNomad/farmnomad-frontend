@@ -11,6 +11,12 @@ export const FEATURES = {
   cropDiagnosis: true,
   /** GET /weather/conditions and /weather/planting. */
   weather: true,
+  /**
+   * Surplus sold for less, to everyone, at the farmer's price. Keep false until products carry
+   * surplusPricePence, surplusQuantity and surplusEndsAt, and POST /surplus takes a price.
+   * Off, surplus stays free stock for verified food groups, as now.
+   */
+  surplusDeals: true,
   /** "Made with produce from": the meal API has no field for it, so it would be discarded. */
   mealSourceFarms: false,
 };

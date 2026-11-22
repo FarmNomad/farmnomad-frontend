@@ -16,10 +16,13 @@ import { MealArt } from "@/components/app/meals/meta";
 import { EmptyState, IconButton, Pill, gbp } from "@/components/app/ui";
 import { LoadError } from "@/components/app/states";
 import { cn } from "@/lib/cn";
+import { FEATURES } from "@/lib/features";
+import { isSurplus as isDeal } from "@/lib/surplus";
 
 type Tab = "produce" | "meals";
 type F = "all" | "surplus" | "low" | "past" | "out";
-const isSurplus = (p: Product) => p.tags?.some((t) => /surplus/i.test(t)) || /surplus/i.test(p.name);
+// With surplus deals on, only a live deal counts. Before that, farmers mark surplus by name or tag.
+const isSurplus = (p: Product) => (FEATURES.surplusDeals ? isDeal(p) : p.tags?.some((t) => /surplus/i.test(t)) || /surplus/i.test(p.name));
 const match: Record<F, (p: Product) => boolean> = {
   all: () => true,
   surplus: isSurplus,
