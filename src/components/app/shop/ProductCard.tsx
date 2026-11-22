@@ -5,8 +5,9 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { Plus } from "@phosphor-icons/react/dist/ssr";
 import { daysUntil, type Product } from "@/lib/types/api";
+import { buyLimit, dealOf, isSurplus } from "@/lib/surplus";
+import { DealPrice } from "./DealPrice";
 import { cn } from "@/lib/cn";
-import { gbp } from "../ui";
 import { QtyStepper } from "./QtyStepper";
 import { useCart } from "./useCart";
 
@@ -18,7 +19,7 @@ const tint: Record<string, string> = {
   Other: "bg-[#EEF1F0] dark:bg-[#141917]",
 };
 
-export const isSurplus = (p: Product) => !!p.tags?.some((t) => t.toLowerCase() === "surplus");
+export { isSurplus };
 
 export function ProductCard({ p, priority }: { p: Product; priority?: boolean }) {
   const { itemFor, addToCart, setQty, canBuy } = useCart();
@@ -26,6 +27,7 @@ export function ProductCard({ p, priority }: { p: Product; priority?: boolean })
   const out = p.quantityAvailable <= 0;
   const d = p.bestBeforeDate ? daysUntil(p.bestBeforeDate) : null;
   const unit = p.tags?.find((t) => /per|box|punnet|bag|bunch/i.test(t));
+  const deal = dealOf(p);
 
   return (
     <article className="group relative flex flex-col">
@@ -56,9 +58,10 @@ export function ProductCard({ p, priority }: { p: Product; priority?: boolean })
           </Link>
           <p className="truncate text-ui-sm text-app-faint">{p.farmerName}</p>
           <p className="mt-1.5 flex items-baseline gap-1.5">
-            <span className="num font-semibold">{gbp(p.price)}</span>
+            <DealPrice p={p} />
             {unit && <span className="truncate text-ui-sm text-app-faint">{unit.toLowerCase()}</span>}
           </p>
+          {deal && !out && <p className="mt-0.5 text-ui-sm text-app-muted"><span className="num">{deal.quantity}</span> at this price</p>}
           {d !== null && d <= 3 && !out && <p className="mt-0.5 text-ui-sm text-app-amber">{d <= 0 ? "Best before today" : `Best before in ${d} day${d === 1 ? "" : "s"}`}</p>}
         </div>
         {/* Quick add: the + grows into a stepper once it's in your cart */}
@@ -67,7 +70,7 @@ export function ProductCard({ p, priority }: { p: Product; priority?: boolean })
             <AnimatePresence mode="popLayout" initial={false}>
               {inCart ? (
                 <motion.div key="stepper" initial={{ opacity: 0, transform: "scale(0.9)" }} animate={{ opacity: 1, transform: "scale(1)" }} exit={{ opacity: 0, transform: "scale(0.9)" }} transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}>
-                  <QtyStepper size="sm" value={inCart.quantity} max={p.quantityAvailable} label={p.name} onChange={(n) => setQty(p.id, n)} />
+                  <QtyStepper size="sm" value={inCart.quantity} max={buyLimit(p)} label={p.name} onChange={(n) => setQty(p.id, n)} />
                 </motion.div>
               ) : (
                 <motion.button

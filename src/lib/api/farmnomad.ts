@@ -25,6 +25,7 @@ import type {
   ProductWrite,
   RegisterInput,
   Surplus,
+  SurplusSuggestion,
   User,
 } from "@/lib/types/api";
 import type { EarningLine, EarningsSummary, PayoutLine } from "@/lib/types/earnings";
@@ -274,6 +275,7 @@ export const api = createApi({
     "Product",
     "Order",
     "Surplus",
+    "SurplusSuggestion",
     "Notification",
     "Me",
     "Cart",
@@ -331,12 +333,22 @@ export const api = createApi({
       queryFn: (_arg, _api, _extra, fetch) => withProductDetails<Surplus>(fetch, "/surplus/my", (row) => ({ ...row, availableQuantity: row.availableQuantity ?? row.quantity })),
       providesTags: ["Surplus"],
     }),
-    createSurplus: b.mutation<Surplus, { productId: number; quantity: number }>(
+    // With surplus deals on, the farmer's price and end date go too; suggestionId marks an accepted suggestion.
+    createSurplus: b.mutation<Surplus, { productId: number; quantity: number; pricePence?: number; endsAt?: string; suggestionId?: number }>(
       {
         query: (body) => ({ url: "/surplus", method: "POST", body }),
-        invalidatesTags: ["Surplus"],
+        invalidatesTags: ["Surplus", "Product", "Market", "SurplusSuggestion"],
       },
     ),
+    listSurplusSuggestions: b.query<SurplusSuggestion[], void>({
+      queryFn: (_arg, _api, _extra, fetch) =>
+        readAs(fetch, "/surplus/suggestions", (data) => asList<SurplusSuggestion>(data)?.filter((s) => s?.id && s.productId && s.quantity > 0) ?? null),
+      providesTags: ["SurplusSuggestion"],
+    }),
+    dismissSurplusSuggestion: b.mutation<null, number>({
+      query: (id) => ({ url: `/surplus/suggestions/${id}/dismiss`, method: "POST" }),
+      invalidatesTags: ["SurplusSuggestion"],
+    }),
 
     myNotifications: b.query<Notification[], void>({
       query: () => "/notifications/my",
@@ -911,6 +923,8 @@ export const {
   useListFarmerOrdersQuery,
   useListMySurplusQuery,
   useCreateSurplusMutation,
+  useListSurplusSuggestionsQuery,
+  useDismissSurplusSuggestionMutation,
   useMyNotificationsQuery,
   useMarkNotificationReadMutation,
   useFarmerRevenueQuery,

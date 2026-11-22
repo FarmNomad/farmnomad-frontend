@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Image from "@/components/app/AppImage";
 import { Desktop, Gift, HandHeart, Moon, Plus, Sun, ArrowRight } from "@phosphor-icons/react/dist/ssr";
 import { useListMyProductsQuery } from "@/lib/api/farmnomad";
+import { SURPLUS_ACTION } from "@/lib/surplus";
 import { useApp } from "./AppState";
 import { NAV } from "@/lib/navigation";
 import { useListProductsQuery } from "@/lib/api/farmnomad";
@@ -70,7 +71,7 @@ export function CommandMenu() {
                     <Plus className="size-4" /> New product <Kbd className="ml-auto">C</Kbd>
                   </Command.Item>
                   <Command.Item className={item} onSelect={() => run(() => setSurplusSheet(true))}>
-                    <HandHeart className="size-4" /> Flag surplus
+                    <HandHeart className="size-4" /> {SURPLUS_ACTION}
                   </Command.Item>
                   <Command.Item className={item} onSelect={() => run(() => setDonateSheet({}))}>
                     <Gift className="size-4" /> Donate produce
