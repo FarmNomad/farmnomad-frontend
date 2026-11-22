@@ -4,10 +4,16 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useCreateMealMutation, useListProductsQuery, useUpdateMealMutation } from "@/lib/api/farmnomad";
 import type { Meal } from "@/lib/types/api";
-import { Field, PhotosPicker, input } from "@/components/app/ProductSheet";
+import { Field, PhotosPicker, input, pickedFile } from "@/components/app/ProductSheet";
+import { useUploadImageMutation } from "@/lib/api/cropScan.api";
+import { FEATURES } from "@/lib/features";
 import { Sheet } from "@/components/app/Sheet";
 import { Button } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
+import { apiError } from "@/lib/api/errors";
+import { useProfileGate } from "@/lib/hooks/useProfileGate";
+import { PayoutsNotice } from "@/components/earnings/PayoutsNotice";
+import { ProfileRequiredCard, profileIncomplete } from "@/components/profile/gates";
 import { CUISINES, DIETARY } from "./meta";
 
 const EMPTY = { name: "", description: "", price: "", portionsAvailable: "", cuisine: "British", photos: [] as string[], available: true, dietary: [] as string[], farms: [] as string[] };
@@ -20,10 +26,15 @@ export function MealSheet({ open, onClose }: { open: Meal | "new" | null; onClos
   const editing = open && open !== "new" ? open : null;
   const [create, c] = useCreateMealMutation();
   const [update, u] = useUpdateMealMutation();
-  const { data: products } = useListProductsQuery();
+  const { data: products } = useListProductsQuery(undefined, { skip: !open || !FEATURES.mealSourceFarms });
+  const [upload, photo] = useUploadImageMutation();
   const farms = useMemo(() => [...new Set(products?.map((p) => p.farmerName).filter(Boolean) as string[])].sort(), [products]);
   const [f, setF] = useState(EMPTY);
   const [tried, setTried] = useState(false);
+  // A kitchen needs its details (and food registration) before listing meals.
+  const gate = useProfileGate();
+  const [serverGate, setServerGate] = useState<string[] | null>(null);
+  const gated = !editing && gate.role === "KITCHEN" && (gate.needsProfile || !!serverGate);
   const set = <K extends keyof typeof EMPTY>(k: K, v: (typeof EMPTY)[K]) => setF((p) => ({ ...p, [k]: v }));
 
   useEffect(() => {
@@ -49,13 +60,30 @@ export function MealSheet({ open, onClose }: { open: Meal | "new" | null; onClos
   async function save() {
     setTried(true);
     if (bad) return;
-    const body = { name: f.name.trim(), description: f.description.trim(), price, portionsAvailable: portions, cuisine: f.cuisine, imageUrls: f.photos, available: f.available && portions > 0, dietary: f.dietary, farms: f.farms };
+    // Meals take hosted URLs, so new photos go to POST /uploads first. A failed save doesn't upload them twice.
+    let imageUrls = f.photos;
+    try {
+      const hosted: string[] = [];
+      for (const src of f.photos) {
+        const file = src.startsWith("blob:") ? pickedFile(src) : undefined;
+        if (src.startsWith("blob:") && !file) continue;
+        hosted.push(file ? (await upload(file).unwrap()).url : src);
+      }
+      imageUrls = hosted;
+      set("photos", hosted);
+    } catch (e) {
+      toast.error("A photo didn't upload", { description: apiError(e, "Try again, or remove the photo.") });
+      return;
+    }
+    const body = { name: f.name.trim(), description: f.description.trim(), price, portionsAvailable: portions, cuisine: f.cuisine, imageUrls, available: f.available && portions > 0, dietary: f.dietary, farms: f.farms };
     try {
       if (editing) await update({ id: editing.id, ...body }).unwrap();
       else await create(body).unwrap();
       toast.success(editing ? "Meal updated" : "Meal added to your menu", { description: body.available ? "Diners can order it on NomadEat now." : "It's hidden until you switch it on." });
       onClose();
     } catch (e) {
+      const missing = profileIncomplete(e);
+      if (missing) return setServerGate(missing);
       toast.error((e as { data?: { message?: string } })?.data?.message ?? "Couldn't save the meal");
     }
   }
@@ -75,12 +103,19 @@ export function MealSheet({ open, onClose }: { open: Meal | "new" | null; onClos
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={save} disabled={c.isLoading || u.isLoading}>
-            {editing ? "Save changes" : "Add to menu"}
-          </Button>
+          {!gated && (
+            <Button variant="primary" onClick={save} disabled={photo.isLoading || c.isLoading || u.isLoading}>
+              {photo.isLoading ? "Uploading photos…" : editing ? "Save changes" : "Add to menu"}
+            </Button>
+          )}
         </>
       }
     >
+      {gated ? (
+        <ProfileRequiredCard role="KITCHEN" missingFields={serverGate ?? gate.missingFields} onNavigate={onClose} />
+      ) : (
+        <>
+      <PayoutsNotice onNavigate={onClose} />
       <div className="grid gap-5 px-5 py-5">
         <PhotosPicker value={f.photos} onChange={(v) => set("photos", v)} />
         <Field label="Meal name" required error={tried ? errors.name : undefined}>
@@ -110,6 +145,8 @@ export function MealSheet({ open, onClose }: { open: Meal | "new" | null; onClos
             ))}
           </div>
         </div>
+        {FEATURES.mealExtras && (
+        <>
         <div className="grid gap-2" role="group" aria-label="Dietary">
           <p className="font-medium">Dietary</p>
           <div className="flex flex-wrap gap-1.5">
@@ -120,6 +157,10 @@ export function MealSheet({ open, onClose }: { open: Meal | "new" | null; onClos
             ))}
           </div>
         </div>
+        </>
+        )}
+        {FEATURES.mealSourceFarms && (
+        <>
         <div className="grid gap-2" role="group" aria-label="Made with produce from">
           <p className="font-medium">Made with produce from</p>
           <p className="-mt-1 text-ui-sm text-app-faint">Diners see which FarmNomad farms your ingredients came from.</p>
@@ -131,6 +172,8 @@ export function MealSheet({ open, onClose }: { open: Meal | "new" | null; onClos
             ))}
           </div>
         </div>
+        </>
+        )}
         <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl p-3.5 shadow-[0_0_0_1px_var(--a-line)]">
           <span>
             <span className="block font-medium">On the menu</span>
@@ -139,6 +182,8 @@ export function MealSheet({ open, onClose }: { open: Meal | "new" | null; onClos
           <Switch on={f.available && portions !== 0} onChange={(v) => set("available", v)} label="On the menu" />
         </label>
       </div>
+        </>
+      )}
     </Sheet>
   );
 }

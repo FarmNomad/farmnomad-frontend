@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { ArrowLeft, BookOpen, Buildings, Check, Church, ForkKnife, GraduationCap, SealCheck } from "@phosphor-icons/react/dist/ssr";
-import { useCreateOrganisationMutation, useMockResetOrganisationMutation, useMockVerifyOrganisationMutation, useMyOrganisationQuery, useUpdateOrganisationMutation } from "@/lib/api/farmnomad";
+import { useCreateOrganisationMutation, useMyOrganisationQuery, useUpdateOrganisationMutation } from "@/lib/api/farmnomad";
 import type { Organisation, OrganisationType } from "@/lib/types/api";
 import { PageHeader } from "@/components/app/PageHeader";
 import { Field, input } from "@/components/app/ProductSheet";
@@ -36,8 +36,6 @@ export default function OrganisationPage() {
 
 function Status({ org }: { org: Organisation }) {
   const [update, { isLoading }] = useUpdateOrganisationMutation();
-  const [verify] = useMockVerifyOrganisationMutation();
-  const [reset] = useMockResetOrganisationMutation();
   const [f, setF] = useState({ name: org.name, charityNumber: org.charityNumber ?? "", description: org.description ?? "" });
   useEffect(() => {
     setF({ name: org.name, charityNumber: org.charityNumber ?? "", description: org.description ?? "" });
@@ -52,7 +50,7 @@ function Status({ org }: { org: Organisation }) {
     e.preventDefault();
     if (!f.name.trim()) return;
     try {
-      await update({ id: org.id, ...f }).unwrap();
+      await update({ id: org.id, type: org.type, ...f }).unwrap();
       toast.success("Organisation details saved");
     } catch {
       toast.error("Couldn't save those details");
@@ -112,18 +110,6 @@ function Status({ org }: { org: Organisation }) {
           </div>
         </form>
 
-        {/* Demo controls: in the real app an admin verifies from /admin/verifications. */}
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-app-line-strong p-4 text-ui-sm text-app-faint">
-          <span className="mr-auto">Demo: try the flow from the start, or approve as an admin would.</span>
-          {level !== "VERIFIED" && (
-            <Button size="sm" onClick={() => verify()}>
-              Approve
-            </Button>
-          )}
-          <Button size="sm" variant="ghost" onClick={() => reset()}>
-            Start over
-          </Button>
-        </div>
       </div>
     </div>
   );

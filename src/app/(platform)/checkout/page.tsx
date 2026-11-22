@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/app/AppImage";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -10,6 +10,7 @@ import { useCreateCheckoutSessionMutation, useGetCartQuery, useMeQuery, useUpdat
 import { Field, input } from "@/components/app/ProductSheet";
 import { Button, Skeleton, gbp } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
+import { LoadError } from "@/components/app/states";
 
 /**
  * Review before paying. The real flow (spec §7.8) calls POST /checkout/create-session and sends the
@@ -17,7 +18,7 @@ import { cn } from "@/lib/cn";
  */
 export default function CheckoutPage() {
   const router = useRouter();
-  const { data: items, isLoading } = useGetCartQuery();
+  const { data: items, isLoading, isError, refetch } = useGetCartQuery();
   const { data: me } = useMeQuery();
   const [update, { isLoading: saving }] = useUpdateMeMutation();
   const [createSession, { isLoading: paying }] = useCreateCheckoutSessionMutation();
@@ -37,7 +38,8 @@ export default function CheckoutPage() {
   async function saveAddress() {
     if (!me || missing) return;
     try {
-      await update({ id: me.id, ...addr }).unwrap();
+      // PUT can replace the whole user, so send the fields this form doesn't show as well.
+      await update({ id: me.id, fullName: me.fullName, country: me.country, profilePictureUrl: me.profilePictureUrl, ...addr }).unwrap();
       setEditing(false);
     } catch {
       toast.error("Couldn't save your address");
@@ -51,6 +53,11 @@ export default function CheckoutPage() {
     }
     try {
       const { checkoutUrl } = await createSession().unwrap();
+      // Only ever follow a web address.
+      if (!/^https?:\/\//i.test(checkoutUrl)) {
+        toast.error("Couldn't start checkout", { description: "The server didn't send a payment link. You haven't been charged." });
+        return;
+      }
       window.location.href = checkoutUrl;
     } catch (e) {
       toast.error("Couldn't start checkout", { description: (e as { data?: { message?: string } })?.data?.message ?? "Try again in a moment." });
@@ -118,6 +125,8 @@ export default function CheckoutPage() {
             <h2 id="items-title" className="border-b border-app-line px-5 py-3 font-medium">Items</h2>
             {isLoading ? (
               <Skeleton className="m-5 h-12" />
+            ) : isError && !items ? (
+              <LoadError what="your cart" onRetry={refetch} />
             ) : (
               <ul>
                 {items?.map((i) => (
@@ -149,9 +158,10 @@ export default function CheckoutPage() {
               <dd className="text-app-muted">Shown on the payment page</dd>
             </div>
           </dl>
-          <Button variant="primary" className="mt-5 h-11 w-full text-[14px]" onClick={pay} disabled={paying || !items?.length}>
+          <Button variant="primary" className="mt-5 h-11 w-full text-[14px]" onClick={pay} disabled={paying || editing || !me || !items?.length}>
             <Lock weight="fill" className="size-4" /> {paying ? "Opening secure payment" : `Pay ${gbp(subtotal)}`}
           </Button>
+          {editing && <p className="mt-3 text-center text-ui-sm text-app-amber">Save your address before paying.</p>}
           <p className="mt-3 text-center text-ui-sm text-app-faint">You&apos;ll enter your card on Stripe&apos;s secure page. FarmNomad never sees your card details.</p>
         </aside>
       </div>

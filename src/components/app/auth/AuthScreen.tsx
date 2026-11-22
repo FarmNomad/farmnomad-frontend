@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import {
   useEffect,
@@ -22,7 +21,9 @@ import {
   CircleNotch,
   CookingPot,
   EnvelopeSimple,
+  GlobeHemisphereWest,
   GoogleLogo,
+  House,
   HandHeart,
   LockSimple,
   MapPin,
@@ -35,27 +36,38 @@ import {
 } from "@phosphor-icons/react/dist/ssr";
 import {
   useForgotPasswordMutation,
+  useLazyGetMyProfileQuery,
+  useLazyMeQuery,
   useLoginMutation,
   useRegisterMutation,
   useResendVerificationMutation,
+  useResetPasswordMutation,
   useVerifyEmailMutation,
 } from "@/lib/api/farmnomad";
-import { HOME, ROLE_META } from "@/lib/navigation";
-import type { MockRole, Role } from "@/lib/types/api";
+import { HOME } from "@/lib/navigation";
+import { hasProfileStep } from "@/lib/types/profile";
+import { clearSession, getSession, setSession } from "@/lib/auth/session";
+import type { Role } from "@/lib/types/api";
 import { useApp } from "@/components/app/AppState";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { cn } from "@/lib/cn";
 import {
   AuthInput,
   Checkbox,
-  Chip,
   Divider,
+  PasswordInput,
   PrimaryButton,
   Segmented,
   SoftButton,
 } from "./parts";
 
-export type AuthMode = "login" | "register" | "forgot" | "verify" | "resend";
+export type AuthMode =
+  | "login"
+  | "register"
+  | "forgot"
+  | "reset"
+  | "verify"
+  | "resend";
 type SignupRole = Exclude<Role, "ADMIN">;
 
 // Spec §7.2: the five roles you can sign up as (never ADMIN), with what each side of FarmNomad offers.
@@ -164,11 +176,24 @@ const PATH: Record<AuthMode, string> = {
   login: "/login",
   register: "/register",
   forgot: "/forgot-password",
+  reset: "/reset-password",
   verify: "/verify-email",
   resend: "/resend-verification",
 };
-const apiMessage = (err: unknown) =>
-  (err as { data?: { message?: string } })?.data?.message;
+/** The API's own words when it sent some, or a plain explanation when the request never got an answer. */
+const apiMessage = (err: unknown): string | undefined => {
+  const e = err as {
+    status?: number | string;
+    data?: { message?: string | null };
+  };
+  if (e?.status === "TIMEOUT_ERROR")
+    return "The server took too long to answer. It may still be waking up, so try again.";
+  if (e?.status === "FETCH_ERROR")
+    return "Couldn't reach the server. Check your connection and try again.";
+  return e?.data?.message ?? undefined;
+};
+const SLOW_NOTE =
+  "Still working. The server is waking up, which can take up to a minute.";
 const POSTCODE = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
 const ease = [0.23, 1, 0.32, 1] as const;
 
@@ -191,8 +216,20 @@ export function AuthScreen({ initial }: { initial: AuthMode }) {
     window.history.replaceState(null, "", PATH[m]);
   };
 
+  // Already signed in: log in and sign up lead straight into the app. Read once on mount, so it
+  // doesn't race the login form, which stores the session before it has chosen where to go.
+  const [alreadyIn] = useState(
+    () => (initial === "login" || initial === "register") && !!getSession(),
+  );
+  useEffect(() => {
+    if (alreadyIn) window.location.replace("/dashboard");
+  }, [alreadyIn]);
+
   const visual = mode === "register" ? ROLES[role] : LOGIN_VISUAL;
   const visualKey = mode === "register" ? role : "login";
+
+  if (alreadyIn)
+    return <div className="min-h-[100dvh] bg-app-bg" aria-busy="true" />;
 
   return (
     <div className="grid min-h-[100dvh] bg-app-bg lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:p-3">
@@ -332,10 +369,17 @@ export function AuthScreen({ initial }: { initial: AuthMode }) {
                 <LoginForm
                   onForgot={() => setMode("forgot")}
                   onSignup={() => setMode("register")}
+                  onResend={() => setMode("resend")}
                 />
               )}
               {mode === "forgot" && (
                 <ForgotForm onBack={() => setMode("login")} />
+              )}
+              {mode === "reset" && (
+                <ResetForm
+                  onLogin={() => setMode("login")}
+                  onForgot={() => setMode("forgot")}
+                />
               )}
               {mode === "verify" && (
                 <VerifyEmail
@@ -375,6 +419,60 @@ function Heading({ title, sub }: { title: string; sub?: ReactNode }) {
   );
 }
 
+/** After five seconds of waiting, say the server is waking up instead of looking stuck. */
+function SlowNote({ active }: { active: boolean }) {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setTimeout(() => setSlow(true), 5000);
+    return () => {
+      window.clearTimeout(timer);
+      setSlow(false);
+    };
+  }, [active]);
+  return (
+    <p
+      aria-live="polite"
+      className={cn("text-center text-ui-sm text-app-faint", !slow && "sr-only")}
+    >
+      {slow ? SLOW_NOTE : ""}
+    </p>
+  );
+}
+
+/** "Check your email" with the API's message shown as sent. It never says whether the account exists. */
+function MailNote({
+  message,
+  email,
+  onAgain,
+}: {
+  message: string;
+  email: string;
+  onAgain: () => void;
+}) {
+  return (
+    <div className="text-center" aria-live="polite">
+      <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-app-accent-soft text-app-accent shadow-[inset_0_0_0_1px_var(--a-accent-soft)]">
+        <EnvelopeSimple weight="duotone" className="size-7" />
+      </div>
+      <h1 className="mt-6 font-display text-[28px] font-medium tracking-[-0.03em]">
+        Check your email
+      </h1>
+      <p className="mt-2 text-app-muted">{message}</p>
+      <p className="mt-1 text-ui-sm text-app-faint">
+        Sent to <span className="font-medium text-app-text">{email}</span>
+      </p>
+      <button
+        type="button"
+        onClick={onAgain}
+        className="mt-4 text-ui-sm font-medium text-app-accent hover:underline"
+      >
+        Use a different email
+      </button>
+    </div>
+  );
+}
+
 function Socials({ verb }: { verb: string }) {
   // Not in the API yet (spec §3.1 has email + password only); kept visible so the layout is final.
   const soon = (p: string) =>
@@ -401,45 +499,62 @@ function Socials({ verb }: { verb: string }) {
 function LoginForm({
   onForgot,
   onSignup,
+  onResend,
 }: {
   onForgot: () => void;
   onSignup: () => void;
+  onResend: () => void;
 }) {
-  const router = useRouter();
   const { setRole } = useApp();
   const [login, { isLoading }] = useLoginMutation();
+  const [fetchMe, { isFetching: loadingMe }] = useLazyMeQuery();
+  const [fetchProfile] = useLazyGetMyProfileQuery();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [show, setShow] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // ?expired=1 is added when a session ends and the app sends the user back here.
+  const [error, setError] = useState<string | null>(() =>
+    new URLSearchParams(window.location.search).get("expired")
+      ? "Your session ended. Log in again to carry on."
+      : null,
+  );
+  // An account that hasn't confirmed its email can't log in yet; offer a new link.
+  const unverified = !!error && /verif|not active|inactive|activate/i.test(error);
 
-  async function submit(e: FormEvent | null, as?: MockRole) {
-    e?.preventDefault();
+  async function submit(e: FormEvent) {
+    e.preventDefault();
     setError(null);
-    if (!as && (!email || !password))
-      return setError("Enter your email and password.");
-    const creds = as
-      ? { email: ROLE_META[as].demoEmail, password: "demo-password" }
-      : { email, password };
+    if (!email || !password) return setError("Enter your email and password.");
     try {
-      const { token } = await login(creds).unwrap();
-      try {
-        window.localStorage.setItem("fn_token", token);
-      } catch {}
-      // Real API: GET /users/me → routeAfterLogin(me.role). The demo picks the role from the account.
-      const role: MockRole =
-        as ??
-        (Object.keys(ROLE_META) as MockRole[]).find(
-          (r) => ROLE_META[r].demoEmail === creds.email.toLowerCase(),
-        ) ??
-        (/farm/i.test(creds.email) ? "FARMER" : "CUSTOMER");
+      const { token, refreshToken } = await login({ email, password }).unwrap();
+      setSession({ token, refreshToken });
+      // The login response has no user in it. The role comes from GET /users/me.
+      const me = await fetchMe().unwrap();
+      if (!(me.role in HOME))
+        throw {
+          data: { message: "This account has a role FarmNomad doesn't recognise." },
+        };
+      const role = me.role;
       setRole(role);
-      router.push(HOME[role]);
+      // A farmer, driver or kitchen without their details goes to the profile step, the first
+      // time only. After that the dashboard banner and the listing gate do the reminding.
+      let next = HOME[role];
+      const seenKey = `fn_onboarding_seen_${me.id}`;
+      if (hasProfileStep(role) && !window.localStorage.getItem(seenKey)) {
+        try {
+          const status = await fetchProfile().unwrap();
+          window.localStorage.setItem(seenKey, "1");
+          if (!status.profileComplete) next = "/onboarding/profile";
+        } catch {
+          // The profile check is a nicety; never let it stop a login.
+        }
+      }
+      // A full page load on purpose: Next keeps earlier pages alive in memory, so a soft
+      // navigation would bring back the previous user and their cached data.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+      window.location.assign(next);
     } catch (err) {
-      setError(
-        (err as { data?: { message?: string } })?.data?.message ??
-          "Something went wrong. Try again.",
-      );
+      clearSession();
+      setError(apiMessage(err) ?? "Something went wrong. Try again.");
     }
   }
 
@@ -457,9 +572,8 @@ function LoginForm({
           inputMode="email"
           icon={<EnvelopeSimple className="size-[18px]" />}
         />
-        <AuthInput
+        <PasswordInput
           label="Password"
-          type={show ? "text" : "password"}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Enter your password"
@@ -475,18 +589,32 @@ function LoginForm({
             </button>
           }
         />
-        <Checkbox checked={show} onChange={setShow}>
-          Show password
-        </Checkbox>
         <p
           aria-live="polite"
           className={cn("text-ui-sm text-app-red", !error && "sr-only")}
         >
           {error}
+          {unverified && (
+            <>
+              {" "}
+              <button
+                type="button"
+                onClick={onResend}
+                className="font-medium text-app-accent underline underline-offset-2"
+              >
+                Send a new verification link
+              </button>
+            </>
+          )}
         </p>
-        <PrimaryButton type="submit" loading={isLoading} className="mt-1">
+        <PrimaryButton
+          type="submit"
+          loading={isLoading || loadingMe}
+          className="mt-1"
+        >
           Log in
         </PrimaryButton>
+        <SlowNote active={isLoading || loadingMe} />
       </form>
       <div className="mt-7 grid gap-5">
         <Socials verb="Log in" />
@@ -501,21 +629,6 @@ function LoginForm({
           Create an account
         </button>
       </p>
-      <div className="mt-8 grid justify-items-center gap-2 text-ui-sm text-app-faint">
-        Explore the demo as
-        <div className="flex flex-wrap justify-center gap-1.5">
-          {(Object.keys(ROLE_META) as MockRole[]).map((r) => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => submit(null, r)}
-              className="rounded-full px-2.5 py-1 font-medium text-app-text shadow-[inset_0_0_0_1px_var(--a-line-strong)] transition-colors hover:bg-app-hover"
-            >
-              {ROLE_META[r].label}
-            </button>
-          ))}
-        </div>
-      </div>
     </>
   );
 }
@@ -526,19 +639,21 @@ function ForgotForm({ onBack }: { onBack: () => void }) {
   const [send, { isLoading }] = useForgotPasswordMutation();
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [sent, setSent] = useState(false);
+  const [sent, setSent] = useState<string | null>(null);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!/^\S+@\S+\.\S+$/.test(email.trim()))
+      return setError("Enter a full email address.");
     try {
-      await send({ email }).unwrap();
-      setSent(true);
-    } catch (err) {
-      setError(
-        (err as { data?: { message?: string } })?.data?.message ??
-          "Couldn't send the link. Try again.",
+      const res = await send({ email: email.trim() }).unwrap();
+      // The API answers the same way whether or not the account exists. Show its message as sent.
+      setSent(
+        res?.message ?? "If that account exists, a reset link has been sent.",
       );
+    } catch (err) {
+      setError(apiMessage(err) ?? "Couldn't send the link. Try again.");
     }
   }
 
@@ -552,10 +667,10 @@ function ForgotForm({ onBack }: { onBack: () => void }) {
         <ArrowLeft className="size-4" /> Back to log in
       </button>
       {sent ? (
-        <SentNote
-          email={email}
-          title="Check your email"
-          body="Open the link we sent to choose a new password. It expires in an hour."
+        <MailNote
+          message={sent}
+          email={email.trim()}
+          onAgain={() => setSent(null)}
         />
       ) : (
         <>
@@ -578,6 +693,7 @@ function ForgotForm({ onBack }: { onBack: () => void }) {
             <PrimaryButton type="submit" loading={isLoading}>
               Send reset link
             </PrimaryButton>
+            <SlowNote active={isLoading} />
           </form>
         </>
       )}
@@ -622,6 +738,118 @@ function SentNote({
   );
 }
 
+/* ─── Reset password: the link in the reset email lands here with ?token= ─── */
+
+function ResetForm({
+  onLogin,
+  onForgot,
+}: {
+  onLogin: () => void;
+  onForgot: () => void;
+}) {
+  const [reset, { isLoading }] = useResetPasswordMutation();
+  const [token] = useState(
+    () =>
+      new URLSearchParams(window.location.search).get("token")?.trim() ?? "",
+  );
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [errors, setErrors] = useState<{
+    password?: string;
+    confirm?: string;
+    form?: string;
+  }>({});
+  const [done, setDone] = useState<string | null>(null);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const er: typeof errors = {};
+    if (password.length < 8) er.password = "Use at least 8 characters.";
+    if (confirm !== password) er.confirm = "The passwords don't match.";
+    setErrors(er);
+    if (Object.keys(er).length) return;
+    try {
+      const res = await reset({ token, newPassword: password }).unwrap();
+      setDone(res?.message ?? "Log in with your new password.");
+    } catch (err) {
+      setErrors({
+        form:
+          apiMessage(err) ??
+          "Couldn't change your password. The link may have expired.",
+      });
+    }
+  }
+
+  if (!token)
+    return (
+      <div aria-live="polite">
+        <StatusNote tone="bad" title="This link is incomplete">
+          Open the link from your reset email again, or ask for a new one.
+        </StatusNote>
+        <PrimaryButton className="mt-8" onClick={onForgot}>
+          Send a new link
+        </PrimaryButton>
+      </div>
+    );
+
+  if (done)
+    return (
+      <div aria-live="polite">
+        <StatusNote tone="ok" title="Password changed">
+          {done}
+        </StatusNote>
+        <PrimaryButton className="mt-8" onClick={onLogin}>
+          Log in
+        </PrimaryButton>
+      </div>
+    );
+
+  return (
+    <>
+      <Heading
+        title="Choose a new password"
+        sub="You'll use it the next time you log in."
+      />
+      <form onSubmit={submit} noValidate className="grid gap-4">
+        <PasswordInput
+          label="New password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="8 or more characters"
+          autoComplete="new-password"
+          icon={<LockSimple className="size-[18px]" />}
+          error={errors.password}
+        />
+        <PasswordInput
+          label="Confirm"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          placeholder="Type it again"
+          autoComplete="new-password"
+          icon={<LockSimple className="size-[18px]" />}
+          error={errors.confirm}
+        />
+        {errors.form && (
+          <p aria-live="polite" className="text-ui-sm text-app-red">
+            {errors.form}{" "}
+            <button
+              type="button"
+              onClick={onForgot}
+              className="font-medium text-app-accent underline underline-offset-2"
+            >
+              Send a new link
+            </button>
+          </p>
+        )}
+        <PrimaryButton type="submit" loading={isLoading} className="mt-1">
+          Change password
+        </PrimaryButton>
+        <SlowNote active={isLoading} />
+      </form>
+    </>
+  );
+}
+
 /* ─── Verify email: the link in the sign-up email lands here with ?token= ─── */
 
 function StatusNote({
@@ -629,7 +857,7 @@ function StatusNote({
   title,
   children,
 }: {
-  tone: "busy" | "ok" | "bad";
+  tone: "ask" | "busy" | "ok" | "bad";
   title: string;
   children: ReactNode;
 }) {
@@ -643,6 +871,9 @@ function StatusNote({
             : "bg-app-accent-soft text-app-accent shadow-[inset_0_0_0_1px_var(--a-accent-soft)]",
         )}
       >
+        {tone === "ask" && (
+          <EnvelopeSimple weight="duotone" className="size-7" />
+        )}
         {tone === "busy" && (
           <CircleNotch className="size-7 animate-spin motion-reduce:animate-none" />
         )}
@@ -672,32 +903,65 @@ function VerifyEmail({
       new URLSearchParams(window.location.search).get("token")?.trim() ?? "",
   );
   const [state, setState] = useState<{
-    status: "verifying" | "done" | "failed";
+    status: "ready" | "verifying" | "done" | "failed";
     message?: string;
-  }>({ status: token ? "verifying" : "failed" });
+  }>({ status: token ? "ready" : "failed" });
   const [slow, setSlow] = useState(false);
   const started = useRef(false);
 
-  useEffect(() => {
-    // The token works once, so never send it twice (React runs effects twice in development).
-    if (!token || started.current) return;
+  // Only ever on a tap. Mail scanners open links by themselves, and the token works once, so
+  // verifying on page load let a scanner use it up before the person saw the email.
+  function confirmEmail() {
+    if (started.current) return;
     started.current = true;
+    setState({ status: "verifying" });
     // The server sleeps when idle and can take up to a minute to wake. Say so rather than look stuck.
     const timer = window.setTimeout(() => setSlow(true), 5000);
     verify({ token })
       .unwrap()
-      .then((res) => setState({ status: "done", message: res?.message }))
-      .catch((err) => setState({ status: "failed", message: apiMessage(err) }))
-      .finally(() => window.clearTimeout(timer));
-  }, [token, verify]);
+      .then((res) => setState({ status: "done", message: res?.message ?? undefined }))
+      .catch((err: { status?: number | string }) => {
+        // If it never got an answer the token is unused, so let them tap again.
+        const noAnswer =
+          err?.status === "FETCH_ERROR" ||
+          err?.status === "TIMEOUT_ERROR" ||
+          (typeof err?.status === "number" && err.status >= 500);
+        if (noAnswer) started.current = false;
+        setState({
+          status: noAnswer ? "ready" : "failed",
+          message:
+            apiMessage(err) ??
+            (noAnswer ? "That didn't go through. Try again." : undefined),
+        });
+      })
+      .finally(() => {
+        window.clearTimeout(timer);
+        setSlow(false);
+      });
+  }
+
+  if (state.status === "ready")
+    return (
+      <div aria-live="polite">
+        <StatusNote tone="ask" title="Confirm your email">
+          Tap the button to finish setting up your account.
+        </StatusNote>
+        {state.message && (
+          <p role="alert" className="mt-4 text-center text-ui-sm text-app-red">
+            {state.message}
+          </p>
+        )}
+        <PrimaryButton className="mt-8" onClick={confirmEmail}>
+          Verify my email
+        </PrimaryButton>
+      </div>
+    );
 
   if (state.status === "verifying")
     return (
       <div aria-live="polite">
         <StatusNote tone="busy" title="Verifying your email">
-          {slow
-            ? "Still working. The server is waking up, which can take up to a minute."
-            : "This only takes a moment."}
+          {slow ? SLOW_NOTE : "This only takes a moment."}
         </StatusNote>
       </div>
     );
@@ -822,6 +1086,7 @@ function ResendForm({ onBack }: { onBack: () => void }) {
             <PrimaryButton type="submit" loading={isLoading}>
               Send verification link
             </PrimaryButton>
+            <SlowNote active={isLoading} />
           </form>
         </>
       )}
@@ -831,21 +1096,42 @@ function ResendForm({ onBack }: { onBack: () => void }) {
 
 /* ─── Sign up: pick a role, then details for that role ───────────────── */
 
+// What the address is for, per role.
+const ADDRESS: Record<SignupRole, { label: string; hint?: string }> = {
+  CUSTOMER: {
+    label: "Delivery postcode",
+    hint: "So we can show the farms that deliver to you.",
+  },
+  FARMER: {
+    label: "Farm postcode",
+    hint: "Where buyers' orders are collected from.",
+  },
+  DRIVER: { label: "Home postcode", hint: "We offer runs that start near you." },
+  ORGANISATION: {
+    label: "Collection postcode",
+    hint: "Where surplus is delivered or collected.",
+  },
+  KITCHEN: { label: "Kitchen postcode" },
+};
+
+// Role details are asked for after the first login, not here, so say what comes next.
+const NEXT_STEP: Partial<Record<SignupRole, string>> = {
+  FARMER: "After you log in we'll ask for your farm name and a few details buyers see.",
+  DRIVER: "After you log in we'll ask about your vehicle and insurance.",
+  KITCHEN: "After you log in we'll ask for your kitchen name and food registration.",
+  ORGANISATION: "After you log in you'll add your organisation's name and type so we can verify it.",
+};
+
 type Details = {
   fullName: string;
   email: string;
   phoneNumber: string;
   password: string;
   confirm: string;
+  address: string;
+  city: string;
   postcode: string;
-  orgName: string; // farm, organisation or kitchen name
-  grows: string[];
-  vehicle: string;
-  radius: string;
-  orgType: string;
-  charityNumber: string;
-  hygiene: string;
-  groupBuying: boolean;
+  country: string;
   terms: boolean;
 };
 const EMPTY: Details = {
@@ -854,15 +1140,10 @@ const EMPTY: Details = {
   phoneNumber: "",
   password: "",
   confirm: "",
+  address: "",
+  city: "",
   postcode: "",
-  orgName: "",
-  grows: [],
-  vehicle: "",
-  radius: "10",
-  orgType: "",
-  charityNumber: "",
-  hygiene: "",
-  groupBuying: true,
+  country: "United Kingdom",
   terms: false,
 };
 
@@ -881,8 +1162,6 @@ function Register({
   details: [Details, Dispatch<SetStateAction<Details>>];
   onLogin: () => void;
 }) {
-  const router = useRouter();
-  const app = useApp();
   const [register, { isLoading }] = useRegisterMutation();
   const [resend] = useResendVerificationMutation();
   const [errors, setErrors] = useState<
@@ -901,16 +1180,11 @@ function Register({
     if (f.confirm !== f.password) er.confirm = "The passwords don't match.";
     if (!POSTCODE.test(f.postcode.trim()))
       er.postcode = "Enter a UK postcode, like PR1 8JA.";
+    if (!f.address.trim()) er.address = "Add your street address.";
+    if (!f.city.trim()) er.city = "Add your town or city.";
+    if (!f.country.trim()) er.country = "Add your country.";
     if (role !== "CUSTOMER" && !f.phoneNumber.trim())
       er.phoneNumber = "Add a number so buyers and drivers can reach you.";
-    if (
-      (role === "FARMER" || role === "ORGANISATION" || role === "KITCHEN") &&
-      !f.orgName.trim()
-    )
-      er.orgName = "Add a name.";
-    if (role === "ORGANISATION" && !f.orgType)
-      er.orgType = "Pick the type of group.";
-    if (role === "DRIVER" && !f.vehicle) er.vehicle = "Pick what you drive.";
     if (!f.terms)
       er.terms = "You need to agree before we can create your account.";
     return er;
@@ -922,32 +1196,26 @@ function Register({
     setErrors(er);
     if (Object.keys(er).length) return;
     try {
-      // POST /auth/register takes the user fields + role (spec §3.1). The role details below are sent
-      // alongside for now; organisations then call POST /organisations {name, type, charityNumber} after
-      // verifying. Farm, driver and kitchen profile endpoints are still to confirm with the backend.
+      // POST /auth/register takes exactly these fields. It creates an inactive account and emails a
+      // verification link; there is no session until the link is opened and the user logs in.
+      // Nothing is collected here that the endpoint would discard. Farm, vehicle and kitchen
+      // details are added after the first login (/onboarding/profile); organisations add theirs
+      // at /organisations/apply.
       await register({
-        fullName: f.fullName,
-        email: f.email,
+        fullName: f.fullName.trim(),
+        email: f.email.trim(),
         password: f.password,
-        phoneNumber: f.phoneNumber,
-        postcode: f.postcode.toUpperCase(),
-        country: "United Kingdom",
+        ...(f.phoneNumber.trim() && { phoneNumber: f.phoneNumber.trim() }),
+        address: f.address.trim(),
+        city: f.city.trim(),
+        postcode: f.postcode.trim().toUpperCase(),
+        country: f.country.trim(),
         role,
-        ...(f.orgName && { organisationName: f.orgName }),
-        ...(role === "FARMER" && { produce: f.grows.join(",") }),
-        ...(role === "DRIVER" && { vehicle: f.vehicle, radiusMiles: f.radius }),
-        ...(role === "ORGANISATION" && {
-          organisationType: f.orgType,
-          charityNumber: f.charityNumber,
-        }),
-        ...(role === "KITCHEN" && { hygieneRating: f.hygiene }),
       }).unwrap();
       setStep("done");
     } catch (err) {
       setErrors({
-        form:
-          (err as { data?: { message?: string } })?.data?.message ??
-          "Couldn't create your account.",
+        form: apiMessage(err) ?? "Couldn't create your account.",
       });
     }
   }
@@ -974,14 +1242,8 @@ function Register({
               )
           }
         />
-        <PrimaryButton
-          className="mt-8"
-          onClick={() => {
-            app.setRole(role);
-            router.push(HOME[role]);
-          }}
-        >
-          Continue to the demo
+        <PrimaryButton className="mt-8" onClick={onLogin}>
+          Go to log in
         </PrimaryButton>
       </>
     );
@@ -1123,10 +1385,9 @@ function Register({
           }
         />
         <div className="grid gap-4 sm:grid-cols-2">
-          <AuthInput
+          <PasswordInput
             label="Password"
             required
-            type="password"
             value={f.password}
             onChange={(e) => set("password", e.target.value)}
             placeholder="8 or more characters"
@@ -1134,10 +1395,9 @@ function Register({
             icon={<LockSimple className="size-[18px]" />}
             error={errors.password}
           />
-          <AuthInput
+          <PasswordInput
             label="Confirm"
             required
-            type="password"
             value={f.confirm}
             onChange={(e) => set("confirm", e.target.value)}
             placeholder="Type it again"
@@ -1149,183 +1409,20 @@ function Register({
       </Section>
 
       <Section title={meta.section}>
-        {role === "FARMER" && (
-          <>
-            <AuthInput
-              label="Farm name"
-              required
-              value={f.orgName}
-              onChange={(e) => set("orgName", e.target.value)}
-              placeholder="e.g. Hollins Farm"
-              icon={<Plant className="size-[18px]" />}
-              error={errors.orgName}
-            />
-            <PostcodeField
-              f={f}
-              set={set}
-              error={errors.postcode}
-              label="Farm postcode"
-              hint="Where buyers' orders are collected from."
-            />
-            <Choice
-              label="What do you grow or rear?"
-              hint="Pick any. You can change this later."
-            >
-              {[
-                "Vegetables",
-                "Fruit",
-                "Dairy",
-                "Eggs",
-                "Meat",
-                "Grains",
-                "Herbs",
-              ].map((g) => (
-                <Chip
-                  key={g}
-                  on={f.grows.includes(g)}
-                  onClick={() =>
-                    set(
-                      "grows",
-                      f.grows.includes(g)
-                        ? f.grows.filter((x) => x !== g)
-                        : [...f.grows, g],
-                    )
-                  }
-                >
-                  {g}
-                </Chip>
-              ))}
-            </Choice>
-          </>
-        )}
-        {role === "CUSTOMER" && (
-          <>
-            <PostcodeField
-              f={f}
-              set={set}
-              error={errors.postcode}
-              label="Delivery postcode"
-              hint="So we can show the farms that deliver to you."
-            />
-            <Checkbox
-              checked={f.groupBuying}
-              onChange={(v) => set("groupBuying", v)}
-            >
-              Tell me when group buying opens, so I can buy with others at
-              wholesale prices.
-            </Checkbox>
-          </>
-        )}
-        {role === "DRIVER" && (
-          <>
-            <PostcodeField
-              f={f}
-              set={set}
-              error={errors.postcode}
-              label="Home postcode"
-              hint="We offer runs that start near you."
-            />
-            <Choice label="What do you drive?" error={errors.vehicle}>
-              {["Car", "Van", "Refrigerated van", "Cargo bike"].map((v) => (
-                <Chip
-                  key={v}
-                  on={f.vehicle === v}
-                  onClick={() => set("vehicle", v)}
-                >
-                  {v}
-                </Chip>
-              ))}
-            </Choice>
-            <Choice label="How far will you travel?">
-              {["5", "10", "20", "30"].map((m) => (
-                <Chip
-                  key={m}
-                  on={f.radius === m}
-                  onClick={() => set("radius", m)}
-                >
-                  {m} miles
-                </Chip>
-              ))}
-            </Choice>
-          </>
-        )}
-        {role === "ORGANISATION" && (
-          <>
-            <AuthInput
-              label="Organisation name"
-              required
-              value={f.orgName}
-              onChange={(e) => set("orgName", e.target.value)}
-              placeholder="e.g. St Mary's Food Bank"
-              icon={<Buildings className="size-[18px]" />}
-              error={errors.orgName}
-            />
-            {/* Spec §3.11: type ∈ FOODBANK, SCHOOL, RELIGIOUS, STUDENT_GROUP */}
-            <Choice label="Type of group" error={errors.orgType}>
-              {[
-                ["FOODBANK", "Food bank"],
-                ["SCHOOL", "School"],
-                ["RELIGIOUS", "Faith group"],
-                ["STUDENT_GROUP", "Student group"],
-              ].map(([v, l]) => (
-                <Chip
-                  key={v}
-                  on={f.orgType === v}
-                  onClick={() => set("orgType", v)}
-                >
-                  {l}
-                </Chip>
-              ))}
-            </Choice>
-            <AuthInput
-              label="Charity number"
-              value={f.charityNumber}
-              onChange={(e) => set("charityNumber", e.target.value)}
-              placeholder="Optional"
-              inputMode="numeric"
-              hint="Registered charities are verified faster."
-            />
-            <PostcodeField
-              f={f}
-              set={set}
-              error={errors.postcode}
-              label="Collection postcode"
-              hint="Where surplus is delivered or collected."
-            />
-          </>
-        )}
-        {role === "KITCHEN" && (
-          <>
-            <AuthInput
-              label="Kitchen name"
-              required
-              value={f.orgName}
-              onChange={(e) => set("orgName", e.target.value)}
-              placeholder="e.g. Fishergate Kitchen"
-              icon={<CookingPot className="size-[18px]" />}
-              error={errors.orgName}
-            />
-            <PostcodeField
-              f={f}
-              set={set}
-              error={errors.postcode}
-              label="Kitchen postcode"
-            />
-            <Choice
-              label="Food hygiene rating"
-              hint="From your Food Standards Agency inspection."
-            >
-              {["5", "4", "3", "Awaiting inspection"].map((h) => (
-                <Chip
-                  key={h}
-                  on={f.hygiene === h}
-                  onClick={() => set("hygiene", h)}
-                >
-                  {h}
-                </Chip>
-              ))}
-            </Choice>
-          </>
+        <PostcodeField
+          f={f}
+          set={set}
+          error={errors.postcode}
+          addressError={errors.address}
+          cityError={errors.city}
+          countryError={errors.country}
+          label={ADDRESS[role].label}
+          hint={ADDRESS[role].hint}
+        />
+        {NEXT_STEP[role] && (
+          <p className="rounded-[12px] bg-app-hover px-3.5 py-3 text-ui-sm text-app-muted">
+            {NEXT_STEP[role]}
+          </p>
         )}
       </Section>
 
@@ -1361,49 +1458,47 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function Choice({
-  label,
-  hint,
-  error,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  error?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="grid gap-2" role="group" aria-label={label}>
-      <span className="text-[13px] font-medium text-app-muted">{label}</span>
-      <div className="flex flex-wrap gap-2">{children}</div>
-      {(error || hint) && (
-        <p
-          className={cn(
-            "text-ui-sm",
-            error ? "text-app-red" : "text-app-faint",
-          )}
-        >
-          {error ?? hint}
-        </p>
-      )}
-    </div>
-  );
-}
-
 function PostcodeField({
   f,
   set,
   error,
+  addressError,
+  cityError,
+  countryError,
   label,
   hint,
 }: {
   f: Details;
   set: <K extends keyof Details>(k: K, v: Details[K]) => void;
   error?: string;
+  addressError?: string;
+  cityError?: string;
+  countryError?: string;
   label: string;
   hint?: string;
 }) {
   return (
+    <>
+    <AuthInput
+      label="Address"
+      required
+      value={f.address}
+      onChange={(e) => set("address", e.target.value)}
+      placeholder="House number and street"
+      autoComplete="street-address"
+      icon={<House className="size-[18px]" />}
+      error={addressError}
+    />
+    <AuthInput
+      label="Town or city"
+      required
+      value={f.city}
+      onChange={(e) => set("city", e.target.value)}
+      placeholder="e.g. Preston"
+      autoComplete="address-level2"
+      icon={<Buildings className="size-[18px]" />}
+      error={cityError}
+    />
     <AuthInput
       label={label}
       required
@@ -1416,5 +1511,16 @@ function PostcodeField({
       hint={hint}
       className="[&_input]:uppercase [&_input]:placeholder:normal-case"
     />
+    <AuthInput
+      label="Country"
+      required
+      value={f.country}
+      onChange={(e) => set("country", e.target.value)}
+      placeholder="United Kingdom"
+      autoComplete="country-name"
+      icon={<GlobeHemisphereWest className="size-[18px]" />}
+      error={countryError}
+    />
+    </>
   );
 }

@@ -70,7 +70,7 @@ export function UserSheet({ user, onClose, onRemove }: { user: User | null; onCl
     if (!u) return;
     setErr(null);
     try {
-      await update({ id: u.id, ...f }).unwrap();
+      await update({ id: u.id, country: u.country, profilePictureUrl: u.profilePictureUrl, ...f }).unwrap();
       toast.success(`${f.fullName} updated`, { description: "Their profile shows the new details straight away." });
     } catch (e) {
       setErr(msg(e));

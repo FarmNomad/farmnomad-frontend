@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/app/AppImage";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { CaretDown, MapPin, Receipt, User as UserIcon } from "@phosphor-icons/react/dist/ssr";
@@ -18,7 +18,7 @@ const GROUPS: OrderStatus[] = ["PENDING", "ASSIGNED", "IN_TRANSIT", "DELIVERED",
 
 export default function OrdersPage() {
   const { role } = useApp();
-  return role === "CUSTOMER" || role === "KITCHEN" ? <CustomerOrders /> : <FarmerOrders />;
+  return role === "CUSTOMER" || role === "KITCHEN" || role === "ORGANISATION" ? <CustomerOrders /> : <FarmerOrders />;
 }
 
 function FarmerOrders() {

@@ -98,7 +98,7 @@ export default function AdminOrders() {
                   <Link href={`/admin/users?open=${o.customerId}`} className="block truncate hover:underline" title="Open their details to fix an address or phone number">
                     {o.customerName}
                   </Link>
-                  <span className="block truncate text-ui-sm text-app-faint">from {o.farmerName}</span>
+                  {o.farmerName && <span className="block truncate text-ui-sm text-app-faint">from {o.farmerName}</span>}
                 </td>
                 <td className={td}>
                   {open ? (

@@ -9,6 +9,7 @@ import {
   Buildings,
   CookingPot,
   ChatsCircle,
+  Coins,
   ForkKnife,
   Gift,
   HandHeart,
@@ -37,6 +38,7 @@ export const NAV: Record<MockRole, NavItem[]> = {
     { href: "/donations/manage", label: "Donations", icon: Gift, key: "G", release: "R2" },
     { href: "/weather", label: "Weather & Planting", icon: CloudSun, key: "W", release: "R3" },
     { href: "/crop-scanner", label: "Crop scanner", icon: Scan, key: "X", release: "R3" },
+    { href: "/earnings", label: "Earnings", icon: Coins, key: "E", release: "R1" },
     { href: "/messages", label: "Messages", icon: ChatsCircle, key: "I", release: "R2" },
     { href: "/profile", label: "Profile", icon: UserCircle, key: "U", release: "R1" },
   ],
@@ -51,6 +53,7 @@ export const NAV: Record<MockRole, NavItem[]> = {
   DRIVER: [
     { href: "/dashboard/driver", label: "Today", icon: House, key: "D", release: "R1", mobile: true },
     { href: "/jobs", label: "Jobs", icon: MapTrifold, key: "J", release: "R1", mobile: true },
+    { href: "/earnings", label: "Earnings", icon: Coins, key: "E", release: "R1" },
     { href: "/messages", label: "Messages", icon: ChatsCircle, key: "I", release: "R2", mobile: true },
     { href: "/profile", label: "Profile", icon: UserCircle, key: "U", release: "R1", mobile: true },
   ],
@@ -60,6 +63,7 @@ export const NAV: Record<MockRole, NavItem[]> = {
     { href: "/meals", label: "Menu", icon: BookOpenText, key: "N", release: "R3" },
     { href: "/marketplace", label: "Buy ingredients", icon: Storefront, key: "M", release: "R1" },
     { href: "/orders", label: "Ingredient orders", icon: Receipt, release: "R1" },
+    { href: "/earnings", label: "Earnings", icon: Coins, key: "E", release: "R1" },
     { href: "/messages", label: "Messages", icon: ChatsCircle, key: "I", release: "R2" },
     { href: "/profile", label: "Profile", icon: UserCircle, key: "U", release: "R1" },
   ],
@@ -79,6 +83,7 @@ export const NAV: Record<MockRole, NavItem[]> = {
     { href: "/dashboard/organisation", label: "Dashboard", icon: House, key: "D", release: "R2" },
     { href: "/donations", label: "Donations", icon: Gift, key: "G", release: "R2" },
     { href: "/surplus", label: "Surplus", icon: HandHeart, key: "S", release: "R2" },
+    { href: "/orders", label: "Deliveries", icon: Receipt, key: "O", release: "R2" },
     { href: "/organisations/apply", label: "Organisation", icon: Buildings, key: "V", release: "R2" },
     { href: "/messages", label: "Messages", icon: ChatsCircle, key: "I", release: "R2" },
     { href: "/profile", label: "Profile", icon: UserCircle, key: "U", release: "R1" },
@@ -97,13 +102,13 @@ export const HOME: Record<MockRole, string> = {
   ADMIN: "/dashboard/admin",
 };
 
-export const ROLE_META: Record<MockRole, { label: string; workspace: string; demoEmail: string }> = {
-  FARMER: { label: "Farmer", workspace: "Hollins Farm", demoEmail: "tom@hollinsfarm.co.uk" },
-  CUSTOMER: { label: "Customer", workspace: "FarmNomad", demoEmail: "amara.okafor@example.com" },
-  DRIVER: { label: "Driver", workspace: "Driving", demoEmail: "sam.patel@example.com" },
-  ORGANISATION: { label: "Food group", workspace: "St Mary's Food Bank", demoEmail: "ruth@stmarysfoodbank.org.uk" },
-  KITCHEN: { label: "Kitchen", workspace: "Fishergate Kitchen", demoEmail: "lena@fishergatekitchen.co.uk" },
-  ADMIN: { label: "Admin", workspace: "FarmNomad admin", demoEmail: "admin@farmnomad.co.uk" },
+export const ROLE_META: Record<MockRole, { label: string; workspace: string }> = {
+  FARMER: { label: "Farmer", workspace: "Your farm" },
+  CUSTOMER: { label: "Customer", workspace: "FarmNomad" },
+  DRIVER: { label: "Driver", workspace: "Driving" },
+  ORGANISATION: { label: "Food group", workspace: "Your organisation" },
+  KITCHEN: { label: "Kitchen", workspace: "Your kitchen" },
+  ADMIN: { label: "Admin", workspace: "FarmNomad admin" },
 };
 
 /**
@@ -111,12 +116,12 @@ export const ROLE_META: Record<MockRole, { label: string; workspace: string; dem
  * A trailing "$" means that exact path only, so "/surplus$" doesn't also allow "/surplus/manage".
  */
 const ALLOWED: Record<MockRole, string[]> = {
-  FARMER: ["/dashboard$", "/dashboard/farmer", "/products", "/orders", "/surplus/manage", "/donations/manage", "/weather", "/crop-scanner", "/marketplace", "/messages", "/profile"],
+  FARMER: ["/dashboard$", "/dashboard/farmer", "/products", "/orders", "/surplus/manage", "/donations/manage", "/weather", "/crop-scanner", "/marketplace", "/earnings", "/messages", "/profile"],
   CUSTOMER: ["/dashboard$", "/marketplace", "/orders", "/cart", "/checkout", "/nomadeat", "/messages", "/profile"],
-  DRIVER: ["/dashboard$", "/dashboard/driver", "/jobs", "/messages", "/profile"],
+  DRIVER: ["/dashboard$", "/dashboard/driver", "/jobs", "/earnings", "/messages", "/profile"],
   ADMIN: ["/dashboard$", "/dashboard/admin", "/admin", "/weather", "/marketplace", "/nomadeat", "/messages", "/profile"],
-  KITCHEN: ["/dashboard$", "/dashboard/kitchen", "/meals", "/marketplace", "/cart", "/checkout", "/orders", "/nomadeat", "/messages", "/profile"],
-  ORGANISATION: ["/dashboard$", "/dashboard/organisation", "/donations$", "/surplus$", "/organisations", "/marketplace", "/messages", "/profile"],
+  KITCHEN: ["/dashboard$", "/dashboard/kitchen", "/meals", "/marketplace", "/cart", "/checkout", "/orders", "/nomadeat", "/earnings", "/messages", "/profile"],
+  ORGANISATION: ["/dashboard$", "/dashboard/organisation", "/donations$", "/surplus$", "/orders", "/organisations", "/marketplace", "/messages", "/profile"],
 };
 
 export function canOpen(role: MockRole, path: string) {

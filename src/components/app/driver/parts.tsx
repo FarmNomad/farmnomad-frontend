@@ -1,11 +1,16 @@
 "use client";
 
+import { useProfileGate } from "@/lib/hooks/useProfileGate";
+import { PROFILE_META, missingFieldsText } from "@/lib/types/profile";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useState } from "react";
 import { toast } from "sonner";
 import { ArrowRight, ArrowSquareOut, CheckCircle, Gift, HandTap, NavigationArrow, Package, Storefront, Truck } from "@phosphor-icons/react/dist/ssr";
 import { useAssignOrderMutation, useUpdateOrderStatusMutation } from "@/lib/api/farmnomad";
 import type { Order } from "@/lib/types/api";
 import { statusMeta } from "@/components/app/orderMeta";
+import { DeliveryCodeDialog } from "@/components/app/delivery/DeliveryCode";
 import { Button, Pill, orderRef, relDay, time } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
 
@@ -19,14 +24,30 @@ export const mapsUrl = (o: Order, from?: "pickup") =>
 export function nextStep(o: Order) {
   if (o.status === "PENDING" && !o.driverId) return { label: "Accept job", hint: "Collect from the farm, deliver to the door." };
   if (o.status === "ASSIGNED") return { label: "Mark as collected", hint: `Head to ${o.farmerName ?? "the farm"} to collect.` };
-  if (o.status === "IN_TRANSIT") return { label: "Mark as delivered", hint: `Drop off with ${o.customerName}.` };
+  if (o.status === "IN_TRANSIT")
+    return o.deliveryCodeRequired
+      ? { label: "Enter delivery code", hint: `Drop off with ${o.customerName} and ask for their code.` }
+      : { label: "Mark as delivered", hint: `Drop off with ${o.customerName}.` };
   return null;
 }
 
 export function useJobActions() {
   const [assign, a] = useAssignOrderMutation();
   const [status, s] = useUpdateOrderStatusMutation();
+  const gate = useProfileGate();
+  const router = useRouter();
+  const [confirming, setConfirming] = useState<Order | null>(null);
+  const delivered = (o: Order) => toast.success("Delivered", { description: `${orderRef(o.id)} is complete. Nice one.` });
   async function advance(o: Order) {
+    // Vehicle and insurance details come first: farms need to know what is collecting from them.
+    if (o.status === "PENDING" && gate.role === "DRIVER" && gate.needsProfile) {
+      const what = gate.missingFields.length ? missingFieldsText("DRIVER", gate.missingFields) : "vehicle details";
+      toast.error("Add your vehicle details first", {
+        description: `We need your ${what} before you can accept jobs.`,
+        action: { label: "Add details", onClick: () => router.push(PROFILE_META.DRIVER.href) },
+      });
+      return;
+    }
     try {
       if (o.status === "PENDING") {
         await assign(o.id).unwrap();
@@ -35,14 +56,26 @@ export function useJobActions() {
         await status({ id: o.id, status: "IN_TRANSIT" }).unwrap();
         toast.success("Collected", { description: `${o.customerName} has been told you're on the way.` });
       } else if (o.status === "IN_TRANSIT") {
+        if (o.deliveryCodeRequired) return setConfirming(o);
         await status({ id: o.id, status: "DELIVERED" }).unwrap();
-        toast.success("Delivered", { description: `${orderRef(o.id)} is complete. Nice one.` });
+        delivered(o);
       }
     } catch (e) {
       toast.error(err(e));
     }
   }
-  return { advance, busy: a.isLoading || s.isLoading };
+  // Whoever calls advance() also renders this.
+  const codeDialog = confirming && (
+    <DeliveryCodeDialog
+      order={confirming}
+      onClose={() => setConfirming(null)}
+      onDelivered={() => {
+        delivered(confirming);
+        setConfirming(null);
+      }}
+    />
+  );
+  return { advance, codeDialog, busy: a.isLoading || s.isLoading };
 }
 
 /** Pickup → drop-off, drawn as a short vertical route. */
@@ -83,7 +116,7 @@ export function DonationTag() {
 
 /** Row in the jobs lists. Whole row opens the job; the button does the next step without leaving. */
 export function JobRow({ o }: { o: Order }) {
-  const { advance, busy } = useJobActions();
+  const { advance, busy, codeDialog } = useJobActions();
   const step = nextStep(o);
   const m = statusMeta[o.status];
   return (
@@ -120,6 +153,7 @@ export function JobRow({ o }: { o: Order }) {
           <Pill tone={m.tone}>{m.short}</Pill>
         )}
       </div>
+      {codeDialog}
     </li>
   );
 }

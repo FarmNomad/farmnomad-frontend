@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { ArrowRight, Plant, Plus, Warning } from "@phosphor-icons/react/dist/ssr";
-import { useKitchenMealOrdersQuery, useListSurplusQuery, useMeQuery, useMyMealsQuery } from "@/lib/api/farmnomad";
+import { useKitchenMealOrdersQuery, useListSurplusQuery, useMeQuery, useMyMealsQuery, useGetEarningsSummaryQuery } from "@/lib/api/farmnomad";
+import { useWorkspaceName } from "@/lib/hooks/useWorkspaceName";
+import { LoadError } from "@/components/app/states";
+import { formatPence } from "@/lib/types/earnings";
 import { PageHeader } from "@/components/app/PageHeader";
 import { OrderTicket } from "@/components/app/meals/OrderCard";
 import { MealArt } from "@/components/app/meals/meta";
@@ -14,14 +17,19 @@ const today = (iso: string) => new Date(iso).toDateString() === new Date().toDat
 /** Kitchen home (spec §7.4 /dashboard/kitchen): the pass, the menu, and ingredients from local farms. */
 export default function KitchenDashboard() {
   const { data: me } = useMeQuery();
-  const { data: orders } = useKitchenMealOrdersQuery(undefined, { pollingInterval: 10000 });
+  const workspace = useWorkspaceName();
+  const { data: earnings } = useGetEarningsSummaryQuery();
+  const { data: orders, isError: ordersFailed, refetch: retryOrders } = useKitchenMealOrdersQuery(undefined, { pollingInterval: 10000 });
+  const unknown = ordersFailed ? "–" : null; // null draws a skeleton
   const { data: menu } = useMyMealsQuery();
   // Kitchens see cheap surplus as well; good for tomorrow's specials.
   const { data: surplus } = useListSurplusQuery();
 
   const live = orders?.filter((o) => o.status === "NEW" || o.status === "PREPARING" || o.status === "READY") ?? [];
-  const todays = orders?.filter((o) => today(o.createdAt) && o.status !== "CANCELLED") ?? [];
-  const takings = todays.reduce((s, o) => s + o.total, 0);
+  // Without a hold or a payment an order is neither work to do nor a sale.
+  const toCook = live.filter((o) => o.status === "PREPARING" || (o.status === "NEW" && o.paymentStatus === "HELD"));
+  const todays = orders?.filter((o) => today(o.createdAt) && o.status !== "CANCELLED" && (o.paymentStatus === "HELD" || o.paymentStatus === "CAPTURED")) ?? [];
+  const takings = todays.reduce((s, o) => (o.paymentStatus === "CAPTURED" ? s + o.total : s), 0); // a hold isn't money taken
   const portions = todays.reduce((s, o) => s + o.quantity, 0);
   const low = menu?.filter((m) => m.portionsAvailable <= 3) ?? [];
   const hour = new Date().getHours();
@@ -30,7 +38,7 @@ export default function KitchenDashboard() {
     <div className="mx-auto max-w-[1100px] pb-16">
       <PageHeader
         title={`${hour < 12 ? "Morning" : hour < 18 ? "Afternoon" : "Evening"}, ${me?.fullName.split(" ")[0] ?? "chef"}`}
-        description="Fishergate Kitchen on NomadEat"
+        description={`${workspace} on NomadEat`}
         actions={
           <Link href="/meals">
             <Button variant="primary">
@@ -40,17 +48,20 @@ export default function KitchenDashboard() {
         }
       />
       <div className="grid gap-6 px-4 md:px-8">
-        <dl className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-          <Stat label="Orders to cook" value={orders ? String(live.filter((o) => o.status !== "READY").length) : null} href="/meals/orders" />
-          <Stat label="Waiting for collection" value={orders ? String(live.filter((o) => o.status === "READY").length) : null} href="/meals/orders" />
-          <Stat label="Portions sold today" value={orders ? String(portions) : null} />
-          <Stat label="Taken today" value={orders ? gbp(takings) : null} />
+        <dl className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
+          <Stat label="Orders to cook" value={orders ? String(toCook.length) : unknown} href="/meals/orders" />
+          <Stat label="Waiting for collection" value={orders ? String(live.filter((o) => o.status === "READY").length) : unknown} href="/meals/orders" />
+          <Stat label="Portions sold today" value={orders ? String(portions) : unknown} />
+          <Stat label="Taken today" value={orders ? gbp(takings) : unknown} />
+          <Stat label="Clearing" value={earnings ? formatPence(earnings.clearingPence) : null} href="/earnings" />
         </dl>
 
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
           <section aria-labelledby="pass">
             <Head id="pass" title="On the pass" href="/meals/orders" />
-            {!orders ? (
+            {!orders && ordersFailed ? (
+              <LoadError what="meal orders" onRetry={retryOrders} />
+            ) : !orders ? (
               <Skeleton className="h-48 rounded-xl" />
             ) : live.length ? (
               <ul className="grid gap-2 sm:grid-cols-2">

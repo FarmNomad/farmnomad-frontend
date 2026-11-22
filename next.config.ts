@@ -17,12 +17,22 @@ const nextConfig: NextConfig = {
   //   ignoreDuringBuilds: true,
   // },
   cacheComponents: true,
+  experimental: {
+    // Signed-in screens render in the browser only, so Next has nothing to validate on them and
+    // flagged every page ("Dropped segment"). Check only pages that opt in with `instant = true`.
+    instantInsights: { validationLevel: "manual-warning" },
+  },
     images: {
     remotePatterns: [
       {
         protocol: "http",
         hostname: "farmnomad-backend.onrender.com",
         pathname: "/uploads/**",
+      },
+      {
+        protocol: "https",
+        hostname: "farmnomad-backend.onrender.com",
+        pathname: "/**",
       },
       {
         protocol: "https",

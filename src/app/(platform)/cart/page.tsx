@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/app/AppImage";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
@@ -12,10 +12,12 @@ import { PageHeader } from "@/components/app/PageHeader";
 import { QtyStepper } from "@/components/app/shop/QtyStepper";
 import { useCart } from "@/components/app/shop/useCart";
 import { Button, EmptyState, Skeleton, gbp } from "@/components/app/ui";
+import { LoadError } from "@/components/app/states";
+import { apiError } from "@/lib/api/errors";
 
 export default function CartPage() {
   const router = useRouter();
-  const { data: items, isLoading } = useGetCartQuery();
+  const { data: items, isLoading, isError, refetch } = useGetCartQuery();
   const { setQty } = useCart();
   const [remove] = useRemoveCartItemMutation();
   const [readd] = useAddToCartMutation();
@@ -26,13 +28,21 @@ export default function CartPage() {
   const farms = new Set(items?.map((i) => i.product?.farmerName)).size;
 
   async function removeItem(i: CartItem) {
-    await remove(i.id);
+    try {
+      await remove(i.id).unwrap();
+    } catch (err) {
+      return void toast.error("Couldn't remove that", { description: apiError(err, "Try again.") });
+    }
     toast(`Removed ${i.product?.name}`, { action: { label: "Undo", onClick: () => readd({ productId: i.productId, quantity: i.quantity }) } });
   }
 
   async function clearAll() {
     const snapshot = items ?? [];
-    await clear();
+    try {
+      await clear().unwrap();
+    } catch (err) {
+      return void toast.error("Couldn't clear your cart", { description: apiError(err, "Try again.") });
+    }
     toast("Cart cleared", {
       action: { label: "Undo", onClick: () => snapshot.forEach((i) => readd({ productId: i.productId, quantity: i.quantity })) },
     });
@@ -51,6 +61,8 @@ export default function CartPage() {
             <Skeleton key={i} className="h-20 w-full rounded-xl" />
           ))}
         </div>
+      ) : isError && !items ? (
+        <LoadError what="your cart" onRetry={refetch} />
       ) : !items?.length ? (
         <EmptyState
           icon={<ShoppingBagOpen className="size-5" />}

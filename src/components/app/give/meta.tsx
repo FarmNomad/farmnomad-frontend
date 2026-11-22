@@ -1,7 +1,7 @@
 "use client";
 
-import Image from "next/image";
-import { CheckCircle, CircleDashed, HandHeart, Truck } from "@phosphor-icons/react/dist/ssr";
+import Image from "@/components/app/AppImage";
+import { CheckCircle, CircleDashed, HandHeart, HourglassMedium, Truck, XCircle } from "@phosphor-icons/react/dist/ssr";
 import type { DonationStatus, OrganisationType, VerificationLevel } from "@/lib/types/api";
 import type { Tone } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
@@ -9,6 +9,9 @@ import { cn } from "@/lib/cn";
 export const donationMeta: Record<DonationStatus, { label: string; farmer: string; tone: Tone; icon: typeof CheckCircle }> = {
   PENDING: { label: "Open to claim", farmer: "Waiting for a food group", tone: "amber", icon: CircleDashed },
   CLAIMED: { label: "Claimed · to collect", farmer: "Claimed, they'll collect", tone: "blue", icon: HandHeart },
+  REQUESTED: { label: "Requested", farmer: "A food group has asked for it", tone: "amber", icon: HourglassMedium },
+  REJECTED: { label: "Turned down", farmer: "The request was turned down", tone: "neutral", icon: XCircle },
+  CANCELLED: { label: "Cancelled", farmer: "Cancelled", tone: "neutral", icon: XCircle },
   IN_DELIVERY: { label: "On its way", farmer: "Claimed, a driver is delivering", tone: "blue", icon: Truck },
   DELIVERED: { label: "Received", farmer: "Delivered", tone: "green", icon: CheckCircle },
 };

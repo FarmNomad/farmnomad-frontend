@@ -10,8 +10,9 @@ import { NAV, ROLE_META, SOON } from "@/lib/navigation";
 import { stockState, type MockRole } from "@/lib/types/api";
 import { cn } from "@/lib/cn";
 import { useApp } from "./AppState";
-import { RoleSwitcher } from "./RoleSwitcher";
 import { Avatar, IconButton, Kbd } from "./ui";
+import { shortcut } from "@/lib/platform";
+import { useWorkspaceName } from "@/lib/hooks/useWorkspaceName";
 
 /** Re-exported for older imports: the current role's nav. */
 export { NAV };
@@ -19,6 +20,7 @@ export { NAV };
 export function Sidebar({ mobile = false }: { mobile?: boolean }) {
   const path = usePathname();
   const { role, collapsed: c, toggleCollapsed, setCommand, setMobileNav } = useApp();
+  const workspace = useWorkspaceName();
   const collapsed = c && !mobile;
   const { data: me } = useMeQuery();
   const counts = useCounts(role);
@@ -45,7 +47,7 @@ export function Sidebar({ mobile = false }: { mobile?: boolean }) {
           )}
           {!collapsed && (
             <>
-              {(role === "FARMER" || role === "ORGANISATION" || role === "KITCHEN" || role === "ADMIN") && <span className="truncate font-semibold tracking-[-0.01em]">{ROLE_META[role].workspace}</span>}
+              {(role === "FARMER" || role === "ORGANISATION" || role === "KITCHEN" || role === "ADMIN") && <span title={workspace} className="truncate font-semibold tracking-[-0.01em]">{workspace}</span>}
               {role !== "ORGANISATION" && role !== "KITCHEN" && role !== "ADMIN" && <span className="ml-auto shrink-0 rounded-full bg-app-accent-soft px-1.5 text-[10px] font-semibold uppercase tracking-wide text-app-accent">{ROLE_META[role].label}</span>}
             </>
           )}
@@ -74,7 +76,7 @@ export function Sidebar({ mobile = false }: { mobile?: boolean }) {
           {!collapsed && (
             <>
               <span>{role === "CUSTOMER" ? "Search produce" : "Search or jump to"}</span>
-              <Kbd className="ml-auto">⌘K</Kbd>
+              <Kbd className="ml-auto">{shortcut("K")}</Kbd>
             </>
           )}
         </button>
@@ -116,7 +118,6 @@ export function Sidebar({ mobile = false }: { mobile?: boolean }) {
       </nav>
 
       <div className="mt-auto grid gap-1 px-2.5 pb-3">
-        <RoleSwitcher collapsed={collapsed} />
         <Link
           href="/"
           className={cn("flex h-8 items-center gap-2.5 rounded-[7px] px-2 text-app-muted transition-colors hover:bg-app-hover hover:text-app-text", collapsed && "justify-center px-0")}
@@ -132,7 +133,7 @@ export function Sidebar({ mobile = false }: { mobile?: boolean }) {
         )}
         <div className="mx-1 my-1 h-px bg-app-line" />
         <Link href="/profile" className={cn("mt-1 flex items-center gap-2.5 rounded-[7px] px-2 py-1.5 transition-colors hover:bg-app-hover", collapsed && "justify-center px-0")}>
-          <Avatar name={me?.fullName ?? "FarmNomad"} />
+          <Avatar name={me?.fullName ?? "FarmNomad"} src={me?.profilePictureUrl} />
           {!collapsed && (
             <div className="min-w-0 leading-tight">
               <p className="truncate font-medium">{me?.fullName ?? " "}</p>
@@ -187,7 +188,7 @@ export function useCounts(role: MockRole): Record<string, number | undefined> {
     };
   if (kitchen)
     return {
-      "/meals/orders": mealOrders?.filter((o) => o.status === "NEW").length,
+      "/meals/orders": mealOrders?.filter((o) => o.status === "NEW" && o.paymentStatus === "HELD").length,
       "/meals": menu?.filter((m) => m.available && m.portionsAvailable <= 3).length,
       "/cart": cart?.reduce((s, i) => s + i.quantity, 0),
       "/messages": unread,

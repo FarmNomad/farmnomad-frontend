@@ -17,8 +17,38 @@ export interface User {
   postcode?: string | null;
   country?: string | null;
   profilePictureUrl?: string | null;
-  /** CONFIRM WITH BACKEND: not in the documented user shape; the admin list uses it for "joined". */
+  /** False until the email address has been verified. */
+  active?: boolean;
   createdAt?: string;
+}
+
+/** POST /auth/login and /auth/refresh. Refresh rotates the refresh token, so store both each time. */
+export interface AuthTokens {
+  token: string;
+  refreshToken: string;
+  userId?: number;
+  role?: Role;
+  fullName?: string;
+  message?: string | null;
+}
+
+/** POST /auth/register. ADMIN cannot self-register. */
+export interface RegisterInput {
+  fullName: string;
+  email: string;
+  password: string;
+  phoneNumber?: string;
+  address?: string;
+  city?: string;
+  postcode?: string;
+  country?: string;
+  profilePictureUrl?: string;
+  role: Exclude<Role, "ADMIN">;
+}
+
+/** The auth routes that only confirm something happened. */
+export interface ApiMessage {
+  message?: string | null;
 }
 
 export interface Product {
@@ -52,11 +82,22 @@ export interface Order {
   paymentStatus: PaymentStatus;
   createdAt: string;
   updatedAt?: string;
-  // CONFIRM WITH BACKEND: drivers need both ends of the run. The mock fills these in.
+  farmerId?: number;
+  farmName?: string | null;
+  farmerName?: string;
   pickupAddress?: string;
   deliveryAddress?: string;
-  farmerName?: string;
+  unitPrice?: number;
+  totalPence?: number | null;
+  // Worked out in completeOrders (api/farmnomad.ts).
+  total?: number;
+  coverImageUrl?: string;
   donationId?: number;
+  // Delivery code. NOT IN THE BACKEND YET: the app uses it as soon as these fields arrive.
+  /** True when the driver needs the buyer's code to complete the order. */
+  deliveryCodeRequired?: boolean;
+  /** Sent to the buyer only, never to the driver or farmer. */
+  deliveryCode?: string | null;
 }
 
 export interface Surplus {
@@ -85,9 +126,15 @@ export interface Notification {
 
 export const PRODUCT_CATEGORIES = ["Vegetables", "Fruit", "Grain", "Dairy", "Meat", "Other"] as const;
 
-/** Product input as the form collects it. The real API takes multipart; see api/farmnomad.ts. */
+/** Product fields as the form collects them. */
 export type ProductInput = Pick<Product, "name" | "price" | "quantityAvailable"> &
   Partial<Pick<Product, "description" | "category" | "bestBeforeDate" | "pickupAddress" | "tags" | "coverImageUrl" | "imageUrls">>;
+
+/**
+ * What create and update send. The real API takes multipart: newly picked photos travel as files
+ * (`coverImage` is the cover, `images` the rest). The URL fields are only used by the sample data.
+ */
+export type ProductWrite = ProductInput & { coverImage?: File; images?: File[]; removeImageUrls?: string[] };
 
 // ─── UI-derived helpers (not part of the API) ───
 export type StockState = "active" | "low" | "expiring" | "expired" | "out";
@@ -137,7 +184,7 @@ export interface Meal {
   available: boolean;
   kitchenId?: number;
   createdAt?: string;
-  // UI enrichments. CONFIRM WITH BACKEND: not in the documented meal body yet.
+  // kitchenArea and farms aren't in the API.
   kitchenName?: string;
   kitchenArea?: string;
   dietary?: string[];
@@ -146,11 +193,18 @@ export interface Meal {
 export type MealInput = Pick<Meal, "name" | "description" | "price" | "portionsAvailable" | "cuisine" | "imageUrls" | "available"> & Partial<Pick<Meal, "dietary" | "farms">>;
 
 /**
- * CONFIRM WITH BACKEND: the spec has no meal ordering endpoint. The demo assumes
- * POST /meal-orders {mealId, quantity}, GET /meal-orders/my, GET /meal-orders/kitchen,
+ * Meal orders:
+ * POST /meal-orders {mealId, quantity, note}, GET /meal-orders/my, GET /meal-orders/kitchen,
  * PATCH /meal-orders/{id}/status?status=.
  */
 export type MealOrderStatus = "NEW" | "PREPARING" | "READY" | "COLLECTED" | "CANCELLED";
+/** The card is held at order (HELD) and charged when the kitchen starts cooking (CAPTURED). */
+export type MealPaymentStatus = "AWAITING_PAYMENT" | "HELD" | "CAPTURED" | "RELEASED" | "REFUNDED" | "EXPIRED";
+/** What POST /meal-orders answers: where to send the diner to pay. */
+export interface MealCheckout {
+  orderId: number;
+  checkoutUrl: string;
+}
 export interface MealOrder {
   id: number;
   mealId: number;
@@ -165,12 +219,16 @@ export interface MealOrder {
   createdAt: string;
   updatedAt?: string;
   note?: string;
+  /** Absent means no payment was recorded, so it mustn't be cooked. */
+  paymentStatus?: MealPaymentStatus | null;
 }
 
 // ─── R2: donations, organisations, messages (spec §2, §3.9–3.12) ───
 export type VerificationLevel = "UNVERIFIED" | "PENDING" | "VERIFIED";
 /** CONFIRM WITH BACKEND: spec types status as a plain string; these are the values the UI expects. */
-export type DonationStatus = "PENDING" | "CLAIMED" | "IN_DELIVERY" | "DELIVERED";
+// The API sends PENDING, CLAIMED, REQUESTED, REJECTED and CANCELLED. IN_DELIVERY and DELIVERED
+// are kept for when a claimed donation is tracked through its delivery order.
+export type DonationStatus = "PENDING" | "CLAIMED" | "REQUESTED" | "REJECTED" | "CANCELLED" | "IN_DELIVERY" | "DELIVERED";
 
 export interface Donation {
   id: number;
@@ -237,7 +295,7 @@ export interface CropScan {
   prevention?: string[];
   recommendation?: string; // older single-text field from spec §3.14, shown if the lists are empty
   createdAt: string;
-  // For the admin list. CONFIRM WITH BACKEND: GET /crop-scans?farmerId= (ADMIN) isn't in the spec yet.
+  // For the admin list. GET /crop-scans?farmerId= (ADMIN).
   farmerId?: number;
   farmerName?: string;
   farmerPostcode?: string;

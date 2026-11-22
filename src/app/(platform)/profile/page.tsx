@@ -1,10 +1,13 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
-import { SignOut } from "@phosphor-icons/react/dist/ssr";
-import { useChangePasswordMutation, useMeQuery, useUpdateMeMutation } from "@/lib/api/farmnomad";
+import { Camera, CaretRight, CircleNotch, SignOut } from "@phosphor-icons/react/dist/ssr";
+import { useChangePasswordMutation, useGetConnectDashboardLinkMutation, useGetEarningsSummaryQuery, useLogoutMutation, useMeQuery, useUpdateMeMutation, useUploadAvatarMutation } from "@/lib/api/farmnomad";
+import { apiError } from "@/lib/api/errors";
+import { PROFILE_META, hasProfileStep } from "@/lib/types/profile";
+import { clearSession, getSession } from "@/lib/auth/session";
 import { ROLE_META } from "@/lib/navigation";
 import { PageHeader } from "@/components/app/PageHeader";
 import { Field, input } from "@/components/app/ProductSheet";
@@ -12,10 +15,36 @@ import { Avatar, Button, Skeleton } from "@/components/app/ui";
 
 /** Profile & settings: user fields from spec §2 (PUT /users/{id}) and change password (POST /auth/change-password). */
 export default function ProfilePage() {
-  const router = useRouter();
   const { data: me } = useMeQuery();
+  const [logout, { isLoading: signingOut }] = useLogoutMutation();
   const [update, { isLoading: saving }] = useUpdateMeMutation();
   const [changePw, { isLoading: changing }] = useChangePasswordMutation();
+  const [uploadAvatar, { isLoading: uploading }] = useUploadAvatarMutation();
+  const [openStripe, { isLoading: openingStripe }] = useGetConnectDashboardLinkMutation();
+  const earns = me?.role === "FARMER" || me?.role === "KITCHEN" || me?.role === "DRIVER";
+  const { data: earnings } = useGetEarningsSummaryQuery(undefined, { skip: !earns });
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function pickPhoto(file: File | undefined) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return void toast.error("Choose an image file", { description: "JPG, PNG or WebP." });
+    if (file.size > 5 * 1024 * 1024) return void toast.error("That photo is too large", { description: "Choose one under 5 MB." });
+    try {
+      await uploadAvatar(file).unwrap();
+      toast.success("Profile picture updated");
+    } catch (err) {
+      toast.error("Couldn't update your picture", { description: apiError(err, "Try again.") });
+    }
+  }
+
+  async function managePayouts() {
+    try {
+      const { url } = await openStripe().unwrap();
+      window.location.href = url; // Stripe's site, so a full navigation
+    } catch (err) {
+      toast.error("Couldn't open your payout details", { description: apiError(err, "Try again.") });
+    }
+  }
   const [f, setF] = useState({ fullName: "", phoneNumber: "", address: "", city: "", postcode: "", country: "" });
   const [pw, setPw] = useState({ currentPassword: "", newPassword: "" });
   const [pwError, setPwError] = useState<string | null>(null);
@@ -31,7 +60,7 @@ export default function ProfilePage() {
     e.preventDefault();
     if (!me || !f.fullName.trim()) return;
     try {
-      await update({ id: me.id, ...f }).unwrap();
+      await update({ id: me.id, profilePictureUrl: me.profilePictureUrl, ...f }).unwrap();
       toast.success("Profile saved");
     } catch {
       toast.error("Couldn't save your profile");
@@ -57,10 +86,29 @@ export default function ProfilePage() {
       <div className="grid gap-4 px-4 md:px-8">
         <form onSubmit={save} className="rounded-xl shadow-[0_0_0_1px_var(--a-line)]" aria-label="Personal details">
           <div className="flex items-center gap-4 border-b border-app-line p-5">
-            {me ? <Avatar name={me.fullName} className="size-12 text-[15px]" /> : <Skeleton className="size-12 rounded-full" />}
+            {me ? (
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                aria-label={me.profilePictureUrl ? "Change profile picture" : "Add a profile picture"}
+                className="group relative shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-app-accent focus-visible:ring-offset-2 focus-visible:ring-offset-app-bg"
+              >
+                <Avatar name={me.fullName} src={me.profilePictureUrl} className="size-16 text-[18px]" />
+                <span className={"absolute inset-0 grid place-items-center rounded-full bg-black/55 text-white transition-opacity duration-150 " + (uploading ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100")}>
+                  {uploading ? <CircleNotch className="size-5 animate-spin" /> : <Camera weight="fill" className="size-5" />}
+                </span>
+              </button>
+            ) : (
+              <Skeleton className="size-16 rounded-full" />
+            )}
+            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => (pickPhoto(e.target.files?.[0]), (e.target.value = ""))} />
             <div className="min-w-0">
               <p className="truncate font-medium">{me?.fullName ?? " "}</p>
               <p className="truncate text-app-faint">{me?.email}</p>
+              <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading || !me} className="mt-1 text-ui-sm font-medium text-app-accent hover:underline disabled:opacity-60">
+                {uploading ? "Uploading…" : me?.profilePictureUrl ? "Change photo" : "Add a photo"}
+              </button>
             </div>
             <span className="ml-auto rounded-full bg-app-accent-soft px-2 py-0.5 text-ui-sm font-medium text-app-accent">{me ? ROLE_META[me.role].label : ""}</span>
           </div>
@@ -93,6 +141,28 @@ export default function ProfilePage() {
           </div>
         </form>
 
+        {hasProfileStep(me?.role) && (
+          <Link href={PROFILE_META[me.role].href} className="group flex items-center justify-between gap-4 rounded-xl p-5 shadow-[0_0_0_1px_var(--a-line)] transition-colors hover:bg-app-hover">
+            <div>
+              <p className="font-medium capitalize">{PROFILE_META[me.role].noun}</p>
+              <p className="text-app-faint">What buyers and drivers see about you, and where they collect from.</p>
+            </div>
+            <CaretRight className="size-4 shrink-0 text-app-faint transition-transform group-hover:translate-x-0.5" />
+          </Link>
+        )}
+
+        {earns && earnings?.onboarded && (
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl p-5 shadow-[0_0_0_1px_var(--a-line)]">
+            <div>
+              <p className="font-medium">Payout details</p>
+              <p className="text-app-faint">Your bank details, tax documents and identity checks are kept by Stripe.</p>
+            </div>
+            <Button onClick={managePayouts} disabled={openingStripe}>
+              Manage payout details
+            </Button>
+          </div>
+        )}
+
         <form onSubmit={savePw} className="rounded-xl shadow-[0_0_0_1px_var(--a-line)]" aria-label="Password">
           <div className="grid gap-4 p-5 sm:grid-cols-2">
             <p className="font-medium sm:col-span-2">Password</p>
@@ -114,11 +184,18 @@ export default function ProfilePage() {
             <p className="text-app-faint">You&apos;ll need your email and password to get back in.</p>
           </div>
           <Button
-            onClick={() => {
+            disabled={signingOut}
+            onClick={async () => {
+              // Tell the server first (it revokes the refresh token), then forget the session here
+              // whether or not that call worked.
               try {
-                window.localStorage.removeItem("fn_token");
+                await logout({ refreshToken: getSession()?.refreshToken }).unwrap();
               } catch {}
-              router.push("/login");
+              clearSession();
+              // A full page load on purpose: Next keeps earlier pages alive in memory, so a soft
+              // navigation would bring back the previous user and their cached data.
+              // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+              window.location.assign("/login");
             }}
           >
             <SignOut className="size-4" /> Sign out

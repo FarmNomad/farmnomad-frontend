@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/app/AppImage";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Minus, Plus } from "@phosphor-icons/react/dist/ssr";
@@ -23,7 +23,8 @@ export function SurplusSheet({ mode = "surplus" }: { mode?: "surplus" | "donate"
   const donate = mode === "donate";
   const open = donate ? !!app.donateSheet : app.surplusSheet;
   const preset = donate ? app.donateSheet?.productId : undefined;
-  const { data: products = [] } = useListMyProductsQuery();
+  // Only farmers have products; other roles would just get "no access" from the API.
+  const { data: products = [] } = useListMyProductsQuery(undefined, { skip: app.role !== "FARMER" });
   const [createSurplus, s1] = useCreateSurplusMutation();
   const [createDonation, s2] = useCreateDonationMutation();
   const isLoading = s1.isLoading || s2.isLoading;

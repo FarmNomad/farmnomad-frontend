@@ -1,18 +1,29 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/app/AppImage";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { ImageSquare, Trash, Warning, X } from "@phosphor-icons/react/dist/ssr";
-import { useCreateProductMutation, useDeleteProductMutation, useRestoreProductMutation, useUpdateProductMutation } from "@/lib/api/farmnomad";
-import { PRODUCT_CATEGORIES, daysUntil, type ProductInput } from "@/lib/types/api";
+import { useCreateProductMutation, useDeleteProductMutation, useMeQuery, useUpdateProductMutation } from "@/lib/api/farmnomad";
+import { apiError } from "@/lib/api/errors";
+import { PRODUCT_CATEGORIES, daysUntil, type ProductWrite } from "@/lib/types/api";
 import { cn } from "@/lib/cn";
+import { modKey, shortcut } from "@/lib/platform";
+import { useProfileGate } from "@/lib/hooks/useProfileGate";
+import { PayoutsNotice } from "@/components/earnings/PayoutsNotice";
+import { ProfileRequiredCard, profileIncomplete } from "@/components/profile/gates";
 import { useApp } from "./AppState";
 import { Sheet } from "./Sheet";
 import { Button, Kbd } from "./ui";
 
-const empty = { name: "", description: "", price: "", quantityAvailable: "", category: "Vegetables", bestBeforeDate: "", pickupAddress: "Hollins Farm, Moss Lane, Garstang PR3 1ZA", tags: [] as string[], photos: [] as string[] };
+const empty = { name: "", description: "", price: "", quantityAvailable: "", category: "Vegetables", bestBeforeDate: "", pickupAddress: "", tags: [] as string[], photos: [] as string[] };
 type Form = typeof empty;
+
+// Photos picked in this session, by their preview URL. The form keeps URLs (for showing and
+// ordering); this is how the real file is found again when the product is saved.
+const pickedFiles = new Map<string, File>();
+/** The file behind a preview URL from PhotosPicker, for forms that upload it themselves. */
+export const pickedFile = (src: string) => pickedFiles.get(src);
 type Errors = Partial<Record<keyof Form, string>>;
 
 export function ProductSheet() {
@@ -22,15 +33,23 @@ export function ProductSheet() {
 
   const [f, setF] = useState<Form>(empty);
   const [errors, setErrors] = useState<Errors>({});
+  // A farmer needs their farm details before listing: the pickup address comes from them.
+  // The server can also say so (409), in case something slips past the check here.
+  const gate = useProfileGate();
+  const [serverGate, setServerGate] = useState<string[] | null>(null);
+  const gated = !editing && gate.role === "FARMER" && (gate.needsProfile || !!serverGate);
   const [create, { isLoading: creating }] = useCreateProductMutation();
   const [update, { isLoading: updating }] = useUpdateProductMutation();
   const [del] = useDeleteProductMutation();
-  const [restore] = useRestoreProductMutation();
+  const { data: me } = useMeQuery();
   const formRef = useRef<HTMLFormElement>(null);
+  // A new listing starts from the farmer's own address.
+  const myAddress = [me?.address, me?.city, me?.postcode].filter(Boolean).join(", ");
 
   useEffect(() => {
     if (!open) return;
     setErrors({});
+    setServerGate(null);
     setF(
       editing
         ? {
@@ -44,9 +63,9 @@ export function ProductSheet() {
             tags: editing.tags ?? [],
             photos: [editing.coverImageUrl, ...(editing.imageUrls ?? [])].filter(Boolean) as string[],
           }
-        : empty,
+        : { ...empty, pickupAddress: myAddress },
     );
-  }, [open, editing]);
+  }, [open, editing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const close = () => setProductSheet(null);
   const set = <K extends keyof Form>(k: K, v: Form[K]) => {
@@ -72,7 +91,7 @@ export function ProductSheet() {
       formRef.current?.querySelector<HTMLElement>("[aria-invalid=true]")?.focus();
       return;
     }
-    const body: ProductInput = {
+    const body: ProductWrite = {
       name: f.name.trim(),
       description: f.description.trim() || undefined,
       price: Math.round(Number(f.price) * 100) / 100,
@@ -81,9 +100,15 @@ export function ProductSheet() {
       bestBeforeDate: f.bestBeforeDate || undefined,
       pickupAddress: f.pickupAddress || undefined,
       tags: f.tags,
-      // Real API: coverImage (file) + images[] (files) as multipart. The first photo is the cover.
-      coverImageUrl: f.photos[0],
-      imageUrls: f.photos.slice(1),
+      // Only photos picked just now are sent, as files. The first photo is the cover
+      // when it is a new one; photos already on the server stay as they are.
+      coverImage: pickedFiles.get(f.photos[0] ?? ""),
+      // Photos that were on the listing when it opened and have been taken out since.
+      removeImageUrls: editing ? [...new Set([editing.coverImageUrl, ...(editing.imageUrls ?? [])])].filter((url): url is string => !!url && !f.photos.includes(url)) : undefined,
+      images: f.photos
+        .slice(1)
+        .map((src) => pickedFiles.get(src))
+        .filter((file): file is File => !!file),
     };
     try {
       if (editing) {
@@ -94,19 +119,26 @@ export function ProductSheet() {
         toast.success("Product listed", { description: `${body.name} is live for buyers nearby.` });
       }
       close();
-    } catch {
-      toast.error("That didn't save", { description: "Check your connection and try again." });
+    } catch (err) {
+      const missing = profileIncomplete(err);
+      if (missing) return setServerGate(missing);
+      toast.error("That didn't save", { description: apiError(err, "Check your connection and try again.") });
     }
   }
 
   async function remove() {
     if (!editing) return;
     const snapshot = editing;
+    // Deleting is permanent, so ask first.
+    if (!window.confirm(`Delete ${snapshot.name}? This can't be undone.`)) return;
     close();
-    await del(snapshot.id);
-    toast(`Deleted ${snapshot.name}`, {
-      action: { label: "Undo", onClick: () => restore(snapshot) },
-    });
+    try {
+      await del(snapshot.id).unwrap();
+    } catch (err) {
+      toast.error(`Couldn't delete ${snapshot.name}`, { description: apiError(err, "Try again.") });
+      return;
+    }
+    toast(`Deleted ${snapshot.name}`);
   }
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -131,12 +163,19 @@ export function ProductSheet() {
           <Button variant="ghost" onClick={close}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={() => submit()} disabled={creating || updating} kbd="⌘↵">
-            {editing ? "Save changes" : "List product"}
-          </Button>
+          {!gated && (
+            <Button variant="primary" onClick={() => submit()} disabled={creating || updating} kbd={shortcut("↵")}>
+              {editing ? "Save changes" : "List product"}
+            </Button>
+          )}
         </>
       }
     >
+      {gated ? (
+        <ProfileRequiredCard role="FARMER" missingFields={serverGate ?? gate.missingFields} onNavigate={close} />
+      ) : (
+        <>
+      <PayoutsNotice onNavigate={close} />
       <form ref={formRef} onSubmit={submit} onKeyDown={onKeyDown} noValidate className="grid gap-5 px-5 py-5">
         <PhotosPicker value={f.photos} onChange={(v) => set("photos", v)} />
 
@@ -205,8 +244,10 @@ export function ProductSheet() {
         <button type="submit" hidden />
       </form>
       <p className="px-5 pb-5 text-ui-sm text-app-faint">
-        Press <Kbd>⌘</Kbd> <Kbd>↵</Kbd> to save from any field.
+        Press <Kbd>{modKey()}</Kbd> <Kbd>↵</Kbd> to save from any field.
       </p>
+        </>
+      )}
     </Sheet>
   );
 }
@@ -275,7 +316,11 @@ export function PhotosPicker({ value, onChange }: { value: string[]; onChange: (
     if (!files) return;
     const urls = Array.from(files)
       .filter((f) => f.type.startsWith("image/"))
-      .map((f) => URL.createObjectURL(f));
+      .map((f) => {
+        const url = URL.createObjectURL(f);
+        pickedFiles.set(url, f);
+        return url;
+      });
     onChange([...value, ...urls].slice(0, MAX_PHOTOS));
   };
   return (

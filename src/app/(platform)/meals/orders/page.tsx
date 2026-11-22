@@ -8,12 +8,13 @@ import { OrderTicket } from "@/components/app/meals/OrderCard";
 import { mealOrderMeta } from "@/components/app/meals/meta";
 import { EmptyState, Skeleton } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
+import { LoadError } from "@/components/app/states";
 
 const LANES: MealOrderStatus[] = ["NEW", "PREPARING", "READY"];
 
 /** The kitchen pass: new → cooking → ready, then a log of what's been collected. */
 export default function MealOrdersPage() {
-  const { data, isLoading } = useKitchenMealOrdersQuery(undefined, { pollingInterval: 10000 });
+  const { data, isLoading, isError, refetch } = useKitchenMealOrdersQuery(undefined, { pollingInterval: 10000 });
   const done = data?.filter((o) => o.status === "COLLECTED" || o.status === "CANCELLED") ?? [];
 
   return (
@@ -21,29 +22,31 @@ export default function MealOrdersPage() {
       <PageHeader title="Meal orders" description="Move each order along as you cook. Diners are told when it's ready." />
       <div className="grid gap-6 px-4 md:px-8">
         {isLoading ? (
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 lg:grid-cols-3">
             {[0, 1, 2].map((i) => (
               <Skeleton key={i} className="h-56 rounded-xl" />
             ))}
           </div>
+        ) : isError && !data ? (
+          <LoadError what="meal orders" onRetry={refetch} />
         ) : !data?.length ? (
           <div className="rounded-xl shadow-[0_0_0_1px_var(--a-line)]">
             <EmptyState icon={<CookingPot className="size-5" />} title="No orders yet" body="When a diner orders from your menu on NomadEat, it lands here." />
           </div>
         ) : (
-          <div className="grid items-start gap-3 md:grid-cols-3">
+          <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-3 lg:grid-cols-3">
             {LANES.map((s) => {
               const items = data.filter((o) => o.status === s);
               const m = mealOrderMeta[s];
               return (
-                <section key={s} aria-label={m.label} className="grid gap-2 rounded-2xl bg-app-hover/60 p-2.5">
+                <section key={s} aria-label={m.label} className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 rounded-2xl bg-app-hover/60 p-2.5">
                   <h2 className="flex items-center gap-2 px-1.5 pt-0.5 font-medium">
                     <m.icon weight="fill" className={cn("size-4", s === "NEW" ? "text-app-amber" : s === "PREPARING" ? "text-app-blue" : "text-app-accent")} />
                     {m.label}
                     <span className="num text-app-faint">{items.length}</span>
                   </h2>
                   {items.length ? (
-                    <ul className="grid gap-2">
+                    <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
                       {items.map((o) => (
                         <OrderTicket key={o.id} o={o} />
                       ))}

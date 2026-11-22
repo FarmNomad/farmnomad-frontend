@@ -1,11 +1,12 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/app/AppImage";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowClockwise, ArrowLeft, ChatsCircle, MapPin, Receipt } from "@phosphor-icons/react/dist/ssr";
-import { useGetOrderQuery, useGetProductQuery, useMeQuery } from "@/lib/api/farmnomad";
+import { useGetOrderQuery, useOrderProductQuery, useMeQuery } from "@/lib/api/farmnomad";
 import { ORDER_FLOW, paymentMeta, statusMeta } from "@/components/app/orderMeta";
+import { DeliveryCodeCard } from "@/components/app/delivery/DeliveryCode";
 import { useCart } from "@/components/app/shop/useCart";
 import { Avatar, Button, EmptyState, Pill, Skeleton, gbp, orderRef, relDay, time } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
@@ -22,7 +23,7 @@ const copy: Record<string, string> = {
 export default function OrderDetailPage() {
   const { orderId } = useParams<{ orderId: string }>();
   const { data: o, isLoading, isError } = useGetOrderQuery(Number(orderId));
-  const { data: p } = useGetProductQuery(o?.productId ?? 0, { skip: !o });
+  const { data: p } = useOrderProductQuery(o?.productId ?? 0, { skip: !o });
   const { data: me } = useMeQuery();
   const { addToCart } = useCart();
 
@@ -43,7 +44,7 @@ export default function OrderDetailPage() {
     <div className="mx-auto max-w-[760px] px-4 pb-16 md:px-8">
       <div className="pt-5">
         <Link href="/orders" className="inline-flex items-center gap-1.5 text-app-muted transition-colors hover:text-app-text">
-          <ArrowLeft className="size-4" /> {me?.role === "CUSTOMER" ? "My orders" : me?.role === "KITCHEN" ? "Ingredient orders" : "Orders"}
+          <ArrowLeft className="size-4" /> {me?.role === "CUSTOMER" ? "My orders" : me?.role === "KITCHEN" ? "Ingredient orders" : me?.role === "ORGANISATION" ? "Deliveries" : "Orders"}
         </Link>
       </div>
 
@@ -80,16 +81,18 @@ export default function OrderDetailPage() {
         </section>
       )}
 
+      {o.deliveryCode && me?.id === o.customerId && (o.status === "ASSIGNED" || o.status === "IN_TRANSIT") && <DeliveryCodeCard code={o.deliveryCode} />}
+
       <section className="mt-4 flex items-center gap-4 rounded-xl p-4 shadow-[0_0_0_1px_var(--a-line)]" aria-label="Item">
         <Link href={`/marketplace/${o.productId}`} className="grid size-16 shrink-0 place-items-center rounded-xl bg-app-hover">
           {p?.coverImageUrl && <Image src={p.coverImageUrl} alt="" width={96} height={96} className="size-14 object-contain" />}
         </Link>
         <div className="min-w-0 flex-1">
           <Link href={`/marketplace/${o.productId}`} className="block truncate font-medium hover:underline">{o.productName}</Link>
-          <p className="truncate text-ui-sm text-app-faint">{p?.farmerName}</p>
-          <p className="num mt-0.5 text-app-muted">{o.quantity} × {p ? gbp(p.price) : "–"}</p>
+          <p className="truncate text-ui-sm text-app-faint">{o.farmerName}</p>
+          <p className="num mt-0.5 text-app-muted">{o.quantity} × {o.unitPrice != null ? gbp(o.unitPrice) : "–"}</p>
         </div>
-        {p && <p className="num font-display text-[20px] font-medium tracking-[-0.02em]">{gbp(p.price * o.quantity)}</p>}
+        {o.total != null && <p className="num font-display text-[20px] font-medium tracking-[-0.02em]">{gbp(o.total)}</p>}
       </section>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -114,7 +117,7 @@ export default function OrderDetailPage() {
           <p className="text-ui-sm text-app-faint">Delivering to</p>
           <p className="mt-2 flex items-start gap-2">
             <MapPin className="mt-0.5 size-4 shrink-0 text-app-muted" />
-            <span>{me ? [me.address, me.city, me.postcode].filter(Boolean).join(", ") : "–"}</span>
+            <span>{o.deliveryAddress || (me ? [me.address, me.city, me.postcode].filter(Boolean).join(", ") : "–")}</span>
           </p>
         </section>
       </div>

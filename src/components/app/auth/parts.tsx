@@ -1,8 +1,8 @@
 "use client";
 
 import { motion } from "motion/react";
-import { forwardRef, useId, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
-import { ArrowRight, Check, CircleNotch } from "@phosphor-icons/react/dist/ssr";
+import { forwardRef, useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
+import { ArrowRight, Check, CircleNotch, Eye, EyeSlash } from "@phosphor-icons/react/dist/ssr";
 import { cn } from "@/lib/cn";
 
 /**
@@ -79,6 +79,29 @@ export const AuthInput = forwardRef<HTMLInputElement, InputProps>(function AuthI
         </p>
       )}
     </div>
+  );
+});
+
+/** A password field with an eye button that shows or hides what was typed. */
+export const PasswordInput = forwardRef<HTMLInputElement, Omit<InputProps, "type" | "trailing">>(function PasswordInput(props, ref) {
+  const [show, setShow] = useState(false);
+  return (
+    <AuthInput
+      ref={ref}
+      {...props}
+      type={show ? "text" : "password"}
+      trailing={
+        <button
+          type="button"
+          onClick={() => setShow((v) => !v)}
+          aria-label={show ? "Hide password" : "Show password"}
+          aria-pressed={show}
+          className="-mr-1.5 grid size-8 shrink-0 place-items-center rounded-[8px] text-app-faint transition-colors hover:text-app-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent"
+        >
+          {show ? <EyeSlash className="size-[18px]" /> : <Eye className="size-[18px]" />}
+        </button>
+      }
+    />
   );
 });
 

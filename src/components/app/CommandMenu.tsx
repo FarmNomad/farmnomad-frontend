@@ -3,7 +3,7 @@
 import { Command } from "cmdk";
 import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
+import Image from "@/components/app/AppImage";
 import { Desktop, Gift, HandHeart, Moon, Plus, Sun, ArrowRight } from "@phosphor-icons/react/dist/ssr";
 import { useListMyProductsQuery } from "@/lib/api/farmnomad";
 import { useApp } from "./AppState";

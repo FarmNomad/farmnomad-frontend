@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/app/AppImage";
 import { BowlFood, BowlSteam, CheckCircle, Cookie, CookingPot, FishSimple, Fire, HandWaving, Pepper, Pizza, XCircle } from "@phosphor-icons/react/dist/ssr";
 import type { Meal, MealOrderStatus } from "@/lib/types/api";
 import type { Tone } from "@/components/app/ui";

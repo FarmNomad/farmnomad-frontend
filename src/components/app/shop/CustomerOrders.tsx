@@ -1,15 +1,16 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/app/AppImage";
 import Link from "next/link";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { CaretRight, Receipt } from "@phosphor-icons/react/dist/ssr";
-import { useListProductsQuery, useMyOrdersQuery } from "@/lib/api/farmnomad";
+import { useMyOrdersQuery } from "@/lib/api/farmnomad";
 import { PageHeader } from "@/components/app/PageHeader";
 import { paymentMeta, statusMeta } from "@/components/app/orderMeta";
 import { Button, EmptyState, Pill, Skeleton, orderRef, relDay, time } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
+import { useApp } from "@/components/app/AppState";
 
 const TABS = [
   ["all", "All"],
@@ -22,7 +23,7 @@ const ACTIVE = ["PENDING", "ASSIGNED", "IN_TRANSIT"];
 /** Customer's orders (spec §7.9): status tabs, then a row per order linking to tracking. */
 export function CustomerOrders() {
   const { data, isLoading } = useMyOrdersQuery();
-  const { data: products } = useListProductsQuery();
+  const group = useApp().role === "ORGANISATION";
   const [tab, setTab] = useState<(typeof TABS)[number][0]>("all");
 
   const rows = useMemo(
@@ -33,7 +34,7 @@ export function CustomerOrders() {
 
   return (
     <div className="mx-auto max-w-[900px] pb-16">
-      <PageHeader title="My orders" description="Follow each order from the farm gate to your door." />
+      <PageHeader title={group ? "Deliveries" : "My orders"} description={group ? "Food you claimed that a driver is bringing to you." : "Follow each order from the farm gate to your door."} />
       <div role="tablist" aria-label="Filter orders" className="mx-4 flex gap-0.5 overflow-x-auto border-b border-app-line pb-2.5 md:mx-8">
         {TABS.map(([id, label]) => (
           <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={cn("relative flex h-8 shrink-0 items-center gap-1.5 rounded-[7px] px-2.5 transition-colors", tab === id ? "text-app-text" : "text-app-muted hover:text-app-text")}>
@@ -51,19 +52,18 @@ export function CustomerOrders() {
           <EmptyState
             icon={<Receipt className="size-5" />}
             title={data?.length ? "Nothing here" : "No orders yet"}
-            body={data?.length ? "Orders with this status will show up here." : "When you buy from a farm, you can follow it here from packing to your door."}
-            action={!data?.length ? <Link href="/marketplace"><Button variant="primary">Browse the marketplace</Button></Link> : undefined}
+            body={data?.length ? "Orders with this status will show up here." : group ? "When you claim a donation with delivery, you can follow it here." : "When you buy from a farm, you can follow it here from packing to your door."}
+            action={!data?.length ? <Link href={group ? "/donations" : "/marketplace"}><Button variant="primary">{group ? "See donations" : "Browse the marketplace"}</Button></Link> : undefined}
           />
         ) : (
           <ul className="grid gap-2">
             {rows.map((o) => {
               const m = statusMeta[o.status];
-              const p = products?.find((x) => x.id === o.productId);
               return (
                 <li key={o.id}>
                   <Link href={`/orders/${o.id}`} className="group flex items-center gap-4 rounded-xl p-3 pr-4 shadow-[0_0_0_1px_var(--a-line)] transition-colors hover:bg-app-hover">
                     <span className="grid size-12 shrink-0 place-items-center rounded-lg bg-app-hover">
-                      {p?.coverImageUrl && <Image src={p.coverImageUrl} alt="" width={72} height={72} className="size-10 object-contain" />}
+                      {o.coverImageUrl && <Image src={o.coverImageUrl} alt="" width={72} height={72} className="size-10 object-contain" />}
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium">

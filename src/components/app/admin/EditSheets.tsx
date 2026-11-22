@@ -67,6 +67,7 @@ export function ListingSheet({ product, onClose }: { product: Product | null; on
         bestBeforeDate: f.bestBeforeDate || undefined,
         pickupAddress: f.pickupAddress.trim(),
         description: f.description.trim(),
+        tags: p.tags, // the form doesn't show them, and leaving them out can clear them
       }).unwrap();
       toast.success(`${f.name.trim()} updated`, { description: "The change is live on the marketplace." });
       onClose();

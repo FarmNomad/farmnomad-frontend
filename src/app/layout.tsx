@@ -44,7 +44,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           href="https://api.fontshare.com/v2/css?f[]=general-sans@200,300,400,500,600,700&display=swap"
         />
       </head>
-      <body>
+      {/* Browser extensions (Grammarly and others) add attributes to <body> before React loads. */}
+      <body suppressHydrationWarning>
         <>{children}</>
         <Analytics />
       </body>

@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/app/AppImage";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, MagnifyingGlass, Package, Plus } from "@phosphor-icons/react/dist/ssr";

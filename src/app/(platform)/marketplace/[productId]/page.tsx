@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { ArrowLeft, CalendarBlank, Check, MapPin, Package, Plant, Truck, UsersThree } from "@phosphor-icons/react/dist/ssr";
-import { useGetProductQuery, useListProductsQuery } from "@/lib/api/farmnomad";
+import { useGetProductQuery, useListProductsQuery, useMeQuery } from "@/lib/api/farmnomad";
 import { daysUntil } from "@/lib/types/api";
 import { useApp } from "@/components/app/AppState";
 import { ProductCard, isSurplus } from "@/components/app/shop/ProductCard";
@@ -20,7 +20,8 @@ export default function ProductPage() {
   const { data: p, isLoading, isError } = useGetProductQuery(id);
   const { data: all } = useListProductsQuery();
   const { role } = useApp();
-  const { itemFor, addToCart, setQty, adding } = useCart();
+  const { data: me } = useMeQuery();
+  const { itemFor, addToCart, setQty, adding, canBuy } = useCart();
   const [qty, setLocalQty] = useState(1);
   const [viewer, setViewer] = useState<number | null>(null);
 
@@ -54,8 +55,8 @@ export default function ProductPage() {
   const d = p.bestBeforeDate ? daysUntil(p.bestBeforeDate) : null;
   const images = [p.coverImageUrl, ...(p.imageUrls ?? [])].filter(Boolean) as string[];
   const town = p.pickupAddress?.split(",").slice(-1)[0]?.trim().replace(/\s+[A-Z]{1,2}\d.*$/, "");
-  const more = (all ?? []).filter((x) => x.farmerName === p.farmerName && x.id !== p.id).slice(0, 4);
-  const own = role === "FARMER" && p.farmerName === "Hollins Farm";
+  const more = (all ?? []).filter((x) => x.farmerId === p.farmerId && x.id !== p.id).slice(0, 4);
+  const own = role === "FARMER" && !!me && p.farmerId === me.id;
 
   return (
     <div className="pb-16">
@@ -123,7 +124,7 @@ export default function ProductPage() {
                 Edit it in Products
               </Link>
             </div>
-          ) : role === "FARMER" ? null : out ? (
+          ) : !canBuy ? null : out ? (
             <div className="mt-7 rounded-xl bg-app-hover p-4 text-app-muted">This sold out. Farms usually relist within the week.</div>
           ) : inCart ? (
             <div className="mt-7 flex flex-wrap items-center gap-3">

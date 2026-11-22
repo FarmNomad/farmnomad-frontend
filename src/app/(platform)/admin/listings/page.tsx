@@ -1,12 +1,12 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/app/AppImage";
 import Link from "next/link";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ArrowSquareOut, ForkKnife, Package, PencilSimple, Trash } from "@phosphor-icons/react/dist/ssr";
-import { useAllMealsAdminQuery, useCreateMealMutation, useDeleteMealMutation, useDeleteProductMutation, useListProductsQuery, useRestoreProductMutation, useUpdateMealMutation } from "@/lib/api/farmnomad";
+import { useAllMealsAdminQuery, useDeleteMealMutation, useDeleteProductMutation, useListProductsQuery, useUpdateMealMutation } from "@/lib/api/farmnomad";
 import { daysUntil, type Meal, type Product } from "@/lib/types/api";
 import { PageHeader } from "@/components/app/PageHeader";
 import { ListingSheet } from "@/components/app/admin/EditSheets";
@@ -14,6 +14,7 @@ import { Confirm, Filters, Search, Table, td, tr } from "@/components/app/admin/
 import { MealSheet, Switch } from "@/components/app/meals/MealSheet";
 import { MealArt } from "@/components/app/meals/meta";
 import { EmptyState, IconButton, Pill, gbp } from "@/components/app/ui";
+import { LoadError } from "@/components/app/states";
 import { cn } from "@/lib/cn";
 
 type Tab = "produce" | "meals";
@@ -78,7 +79,6 @@ export default function AdminListings() {
 function Produce({ q, setQ, f, setF }: { q: string; setQ: (v: string) => void; f: F; setF: (v: F) => void }) {
   const { data, isLoading } = useListProductsQuery();
   const [del, { isLoading: busy }] = useDeleteProductMutation();
-  const [restore] = useRestoreProductMutation();
   const [removing, setRemoving] = useState<Product | null>(null);
   const [editing, setEditing] = useState<Product | null>(null);
 
@@ -90,7 +90,7 @@ function Produce({ q, setQ, f, setF }: { q: string; setQ: (v: string) => void; f
     try {
       await del(p.id).unwrap();
       setRemoving(null);
-      toast(`Took down ${p.name}`, { action: { label: "Undo", onClick: () => restore(p) } });
+      toast(`Took down ${p.name}`);
     } catch {
       toast.error("Couldn't take that listing down");
     }
@@ -160,10 +160,9 @@ function Produce({ q, setQ, f, setF }: { q: string; setQ: (v: string) => void; f
 }
 
 function Meals({ q, setQ }: { q: string; setQ: (v: string) => void }) {
-  const { data, isLoading } = useAllMealsAdminQuery();
+  const { data, isLoading, isError, refetch } = useAllMealsAdminQuery();
   const [update] = useUpdateMealMutation();
   const [del, { isLoading: busy }] = useDeleteMealMutation();
-  const [create] = useCreateMealMutation();
   const [editing, setEditing] = useState<Meal | null>(null);
   const [removing, setRemoving] = useState<Meal | null>(null);
   const rows = (data ?? []).filter((m) => `${m.name} ${m.kitchenName ?? ""} ${m.cuisine}`.toLowerCase().includes(q.toLowerCase()));
@@ -174,10 +173,7 @@ function Meals({ q, setQ }: { q: string; setQ: (v: string) => void }) {
     try {
       await del(m.id).unwrap();
       setRemoving(null);
-      toast(`Took down ${m.name}`, {
-        // The demo puts it back under the demo kitchen; a real undo would restore it for its own kitchen.
-        action: { label: "Undo", onClick: () => create({ name: m.name, description: m.description, price: m.price, portionsAvailable: m.portionsAvailable, cuisine: m.cuisine, imageUrls: m.imageUrls, available: m.available, dietary: m.dietary, farms: m.farms }) },
-      });
+      toast(`Took down ${m.name}`);
     } catch {
       toast.error("Couldn't take that meal down");
     }
@@ -188,7 +184,7 @@ function Meals({ q, setQ }: { q: string; setQ: (v: string) => void }) {
       <div className="flex justify-end">
         <Search value={q} onChange={setQ} placeholder="Search meal, kitchen or cuisine" />
       </div>
-      <Table head={["Meal", "Kitchen", "Price", "Portions", "On NomadEat", ""]} minWidth={820} loading={isLoading} empty={!rows.length && !isLoading ? <EmptyState icon={<ForkKnife className="size-5" />} title="No meals match" body="Try another search." /> : undefined}>
+      <Table head={["Meal", "Kitchen", "Price", "Portions", "On NomadEat", ""]} minWidth={820} loading={isLoading} empty={!rows.length && !isLoading ? isError ? <LoadError what="meals" onRetry={refetch} /> : <EmptyState icon={<ForkKnife className="size-5" />} title={data?.length ? "No meals match" : "No meals yet"} body={data?.length ? "Try another search." : "Meals appear here as kitchens add them."} /> : undefined}>
         {rows.map((m) => (
           <tr key={m.id} className={tr}>
             <td className={td}>
@@ -209,8 +205,10 @@ function Meals({ q, setQ }: { q: string; setQ: (v: string) => void }) {
                 label={`${m.name} on NomadEat`}
                 disabled={m.portionsAvailable === 0 && !m.available}
                 onChange={(v) => {
-                  update({ id: m.id, available: v });
-                  toast(v ? `${m.name} is back on NomadEat` : `${m.name} is hidden from diners`);
+                  update({ id: m.id, available: v })
+                    .unwrap()
+                    .then(() => toast(v ? `${m.name} is back on NomadEat` : `${m.name} is hidden from diners`))
+                    .catch(() => toast.error(`Couldn't update ${m.name}`));
                 }}
               />
             </td>
