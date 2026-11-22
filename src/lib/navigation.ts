@@ -83,6 +83,7 @@ export const NAV: Record<MockRole, NavItem[]> = {
     { href: "/dashboard/organisation", label: "Dashboard", icon: House, key: "D", release: "R2" },
     { href: "/donations", label: "Donations", icon: Gift, key: "G", release: "R2" },
     { href: "/surplus", label: "Surplus", icon: HandHeart, key: "S", release: "R2" },
+    { href: "/orders", label: "Deliveries", icon: Receipt, key: "O", release: "R2" },
     { href: "/organisations/apply", label: "Organisation", icon: Buildings, key: "V", release: "R2" },
     { href: "/messages", label: "Messages", icon: ChatsCircle, key: "I", release: "R2" },
     { href: "/profile", label: "Profile", icon: UserCircle, key: "U", release: "R1" },
@@ -120,7 +121,7 @@ const ALLOWED: Record<MockRole, string[]> = {
   DRIVER: ["/dashboard$", "/dashboard/driver", "/jobs", "/earnings", "/messages", "/profile"],
   ADMIN: ["/dashboard$", "/dashboard/admin", "/admin", "/weather", "/marketplace", "/nomadeat", "/messages", "/profile"],
   KITCHEN: ["/dashboard$", "/dashboard/kitchen", "/meals", "/marketplace", "/cart", "/checkout", "/orders", "/nomadeat", "/earnings", "/messages", "/profile"],
-  ORGANISATION: ["/dashboard$", "/dashboard/organisation", "/donations$", "/surplus$", "/organisations", "/marketplace", "/messages", "/profile"],
+  ORGANISATION: ["/dashboard$", "/dashboard/organisation", "/donations$", "/surplus$", "/orders", "/organisations", "/marketplace", "/messages", "/profile"],
 };
 
 export function canOpen(role: MockRole, path: string) {

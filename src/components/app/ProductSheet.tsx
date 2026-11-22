@@ -8,6 +8,7 @@ import { useCreateProductMutation, useDeleteProductMutation, useMeQuery, useUpda
 import { apiError } from "@/lib/api/errors";
 import { PRODUCT_CATEGORIES, daysUntil, type ProductWrite } from "@/lib/types/api";
 import { cn } from "@/lib/cn";
+import { modKey, shortcut } from "@/lib/platform";
 import { useProfileGate } from "@/lib/hooks/useProfileGate";
 import { PayoutsNotice } from "@/components/earnings/PayoutsNotice";
 import { ProfileRequiredCard, profileIncomplete } from "@/components/profile/gates";
@@ -159,7 +160,7 @@ export function ProductSheet() {
             Cancel
           </Button>
           {!gated && (
-            <Button variant="primary" onClick={() => submit()} disabled={creating || updating} kbd="⌘↵">
+            <Button variant="primary" onClick={() => submit()} disabled={creating || updating} kbd={shortcut("↵")}>
               {editing ? "Save changes" : "List product"}
             </Button>
           )}
@@ -239,7 +240,7 @@ export function ProductSheet() {
         <button type="submit" hidden />
       </form>
       <p className="px-5 pb-5 text-ui-sm text-app-faint">
-        Press <Kbd>⌘</Kbd> <Kbd>↵</Kbd> to save from any field.
+        Press <Kbd>{modKey()}</Kbd> <Kbd>↵</Kbd> to save from any field.
       </p>
         </>
       )}

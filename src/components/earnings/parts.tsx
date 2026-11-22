@@ -71,9 +71,10 @@ export function EarningsBalanceCard({ summary, driver, hidePayoutDate }: { summa
   else if (summary.nextPayoutDate)
     next = (
       <>
-        Next payout: <strong className="font-medium text-app-text">{day(summary.nextPayoutDate, { weekday: "long", day: "numeric", month: "long" })}</strong> · {formatPence(summary.nextPayoutPence)}
+        Next payout: <strong className="font-medium text-app-text">{day(summary.nextPayoutDate, { weekday: "long", day: "numeric", month: "long" })}</strong> · {formatPence(due)}
       </>
     );
+  else if (due > 0) next = `${formatPence(due)} is ready for your next scheduled payout.`;
   else next = "No payout scheduled. You'll see one here once you have cleared earnings.";
 
   return (
@@ -83,6 +84,7 @@ export function EarningsBalanceCard({ summary, driver, hidePayoutDate }: { summa
         <Figure label="Available" pence={summary.availablePence} tip="Ready for your next payout." />
         <Figure label="Paid out" pence={summary.paidOutPence} tip="Total sent to your bank." />
       </dl>
+      {!!summary.transferredPence && <p className="border-t border-app-line px-5 py-3.5 text-app-muted">{formatPence(summary.transferredPence)} is on its way to your bank.</p>}
       {!hidePayoutDate && <p className="border-t border-app-line px-5 py-3.5 text-app-muted">{next}</p>}
     </section>
   );
@@ -198,7 +200,7 @@ export function PayoutHistoryTable({ payouts }: { payouts: PayoutLine[] }) {
           <thead>
             <tr className="border-b border-app-line">
               <th className={th}>Date</th>
-              <th className={th}>Bank account</th>
+              {payouts.some((p) => p.bankLast4) && <th className={th}>Bank account</th>}
               <th className={cn(th, "text-right")}>Amount</th>
               <th className={th}>Status</th>
             </tr>
@@ -207,7 +209,7 @@ export function PayoutHistoryTable({ payouts }: { payouts: PayoutLine[] }) {
             {payouts.map((p) => (
               <tr key={p.id} className="border-b border-app-line last:border-0">
                 <td className={cn(td, "num whitespace-nowrap text-app-muted")}>{day(p.date)}</td>
-                <td className={cn(td, "num")}>•••• {p.bankLast4}</td>
+                {payouts.some((x) => x.bankLast4) && <td className={cn(td, "num")}>{p.bankLast4 ? `•••• ${p.bankLast4}` : "–"}</td>}
                 <td className={cn(td, "num text-right font-medium")}>{formatPence(p.amountPence)}</td>
                 <td className={td}>
                   <Pill tone={PAYOUT[p.status].tone}>{PAYOUT[p.status].label}</Pill>

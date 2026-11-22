@@ -17,7 +17,7 @@ export default function JobPage() {
   const { orderId } = useParams<{ orderId: string }>();
   const { data: o, isLoading, isError } = useGetOrderQuery(Number(orderId));
   const { data: p } = useOrderProductQuery(o?.productId ?? 0, { skip: !o });
-  const { advance, busy } = useJobActions();
+  const { advance, busy, codeDialog } = useJobActions();
 
   if (isLoading)
     return (
@@ -100,7 +100,7 @@ export default function JobPage() {
       {/* People */}
       {mine && (
         <section className="mt-4 grid gap-2 sm:grid-cols-2" aria-label="Contacts">
-          <Contact who={o.farmerName ?? "Farm"} role="Collect from" id={p?.farmerId ?? 7} />
+          <Contact who={o.farmerName ?? "Farm"} role="Collect from" id={o.farmerId ?? p?.farmerId ?? 0} />
           <Contact who={o.customerName} role={o.donationId ? "Food group" : "Deliver to"} id={o.customerId} />
         </section>
       )}
@@ -111,6 +111,7 @@ export default function JobPage() {
         </p>
       )}
 
+      {codeDialog}
       {/* Sticky action on phones, inline on desktop */}
       {step && (
         <div className="fixed inset-x-0 bottom-14 z-30 border-t border-app-line bg-app-bg/90 p-3 backdrop-blur-xl md:static md:mt-6 md:border-0 md:bg-transparent md:p-0">

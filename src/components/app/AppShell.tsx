@@ -8,7 +8,8 @@ import { Toaster } from "sonner";
 import { Bell, Check, HandHeart, List, Package, Receipt, ShoppingBagOpen } from "@phosphor-icons/react/dist/ssr";
 import { useGetCartQuery, useMarkNotificationReadMutation, useMeQuery, useMyNotificationsQuery } from "@/lib/api/farmnomad";
 import { getSession } from "@/lib/auth/session";
-import { HOME, NAV, ROLE_META, allNav, canOpen } from "@/lib/navigation";
+import { HOME, NAV, allNav, canOpen } from "@/lib/navigation";
+import { useWorkspaceName } from "@/lib/hooks/useWorkspaceName";
 import { cn } from "@/lib/cn";
 import { ProfileBanner } from "@/components/profile/gates";
 import { AppState, useApp } from "./AppState";
@@ -118,6 +119,7 @@ function Frame({ children }: { children: ReactNode }) {
 function TopBar() {
   const path = usePathname();
   const { role, setMobileNav } = useApp();
+  const workspace = useWorkspaceName();
   const page = path.startsWith("/checkout")
     ? { label: "Checkout" }
     : (NAV[role].find((n) => path === n.href || path.startsWith(n.href + "/")) ?? allNav.find((n) => path === n.href || path.startsWith(n.href + "/")));
@@ -127,7 +129,7 @@ function TopBar() {
         <List className="size-[18px]" />
       </IconButton>
       <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-app-muted">
-        <span className="hidden sm:inline">{ROLE_META[role].workspace}</span>
+        <span className="hidden max-w-[240px] truncate sm:inline">{workspace}</span>
         <span className="hidden text-app-faint sm:inline">/</span>
         <span className="truncate font-medium text-app-text">{page?.label ?? "FarmNomad"}</span>
       </nav>

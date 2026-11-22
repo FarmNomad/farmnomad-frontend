@@ -82,15 +82,22 @@ export interface Order {
   paymentStatus: PaymentStatus;
   createdAt: string;
   updatedAt?: string;
-  // Not on the API's order. The first group is filled in from the order's product (see
-  // completeOrders in api/farmnomad.ts); the API has no source yet for the last two.
-  pickupAddress?: string;
+  farmerId?: number;
+  farmName?: string | null;
   farmerName?: string;
+  pickupAddress?: string;
+  deliveryAddress?: string;
   unitPrice?: number;
+  totalPence?: number | null;
+  // Worked out in completeOrders (api/farmnomad.ts).
   total?: number;
   coverImageUrl?: string;
-  deliveryAddress?: string;
   donationId?: number;
+  // Delivery code. NOT IN THE BACKEND YET: the app uses it as soon as these fields arrive.
+  /** True when the driver needs the buyer's code to complete the order. */
+  deliveryCodeRequired?: boolean;
+  /** Sent to the buyer only, never to the driver or farmer. */
+  deliveryCode?: string | null;
 }
 
 export interface Surplus {

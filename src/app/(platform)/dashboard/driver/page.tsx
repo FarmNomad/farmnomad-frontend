@@ -136,7 +136,7 @@ function Stat({ label, value, icon: Icon, loading, href }: { label: string; valu
 
 /** The job in hand: big, glanceable, one obvious next action. */
 function CurrentJob({ o }: { o: Order }) {
-  const { advance, busy } = useJobActions();
+  const { advance, busy, codeDialog } = useJobActions();
   const { data: p } = useOrderProductQuery(o.productId);
   const step = nextStep(o);
   const m = statusMeta[o.status];
@@ -165,7 +165,7 @@ function CurrentJob({ o }: { o: Order }) {
         </div>
         <div className="flex flex-wrap gap-3 sm:flex-col sm:items-end">
           <MapsLink o={o} toPickup={o.status === "ASSIGNED"} />
-          <Link href={`/messages?to=${toFarm ? (p?.farmerId ?? 7) : o.customerId}&name=${encodeURIComponent(toFarm ? (o.farmerName ?? "") : o.customerName)}`} className="inline-flex items-center gap-1.5 text-ui-sm font-medium text-app-muted hover:text-app-text">
+          <Link href={`/messages?to=${toFarm ? (o.farmerId ?? p?.farmerId ?? 0) : o.customerId}&name=${encodeURIComponent(toFarm ? (o.farmerName ?? "") : o.customerName)}`} className="inline-flex items-center gap-1.5 text-ui-sm font-medium text-app-muted hover:text-app-text">
             <ChatsCircle className="size-3.5" /> Message {toFarm ? "the farm" : "customer"}
           </Link>
         </div>
@@ -175,6 +175,7 @@ function CurrentJob({ o }: { o: Order }) {
           <Button variant="primary" className="h-11 w-full text-[15px]" disabled={busy} onClick={() => advance(o)}>
             {o.status === "ASSIGNED" ? <Package className="size-4" /> : <CheckCircle className="size-4" />} {step.label}
           </Button>
+          {codeDialog}
         </div>
       )}
     </article>

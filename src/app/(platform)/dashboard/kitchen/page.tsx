@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, Plant, Plus, Warning } from "@phosphor-icons/react/dist/ssr";
 import { useKitchenMealOrdersQuery, useListSurplusQuery, useMeQuery, useMyMealsQuery, useGetEarningsSummaryQuery } from "@/lib/api/farmnomad";
+import { useWorkspaceName } from "@/lib/hooks/useWorkspaceName";
 import { formatPence } from "@/lib/types/earnings";
 import { PageHeader } from "@/components/app/PageHeader";
 import { OrderTicket } from "@/components/app/meals/OrderCard";
@@ -15,6 +16,7 @@ const today = (iso: string) => new Date(iso).toDateString() === new Date().toDat
 /** Kitchen home (spec §7.4 /dashboard/kitchen): the pass, the menu, and ingredients from local farms. */
 export default function KitchenDashboard() {
   const { data: me } = useMeQuery();
+  const workspace = useWorkspaceName();
   const { data: earnings } = useGetEarningsSummaryQuery();
   const { data: orders } = useKitchenMealOrdersQuery(undefined, { pollingInterval: 10000 });
   const { data: menu } = useMyMealsQuery();
@@ -32,7 +34,7 @@ export default function KitchenDashboard() {
     <div className="mx-auto max-w-[1100px] pb-16">
       <PageHeader
         title={`${hour < 12 ? "Morning" : hour < 18 ? "Afternoon" : "Evening"}, ${me?.fullName.split(" ")[0] ?? "chef"}`}
-        description="Your kitchen on NomadEat"
+        description={`${workspace} on NomadEat`}
         actions={
           <Link href="/meals">
             <Button variant="primary">

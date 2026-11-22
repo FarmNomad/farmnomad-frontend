@@ -52,7 +52,8 @@ const LIVE_ROUTES: [method: string, path: RegExp][] = [
   ["DELETE", /^\/products\/\d+$/],
   // Phase 3: orders, and the accounts an admin assigns them to.
   ["GET", /^\/orders$/],
-  ["GET", /^\/orders\/(my|assigned|unassigned|\d+)$/],
+  ["GET", /^\/orders\/(my|my\/farmer|assigned|unassigned|\d+)$/],
+  ["POST", /^\/orders\/\d+\/confirm-delivery$/],
   ["PATCH", /^\/orders\/\d+\/(assign|status)$/],
   ["GET", /^\/users$/],
   ["PUT", /^\/users\/\d+$/],
@@ -65,10 +66,18 @@ const LIVE_ROUTES: [method: string, path: RegExp][] = [
   ["GET", /^\/donations(\/all|\/my\/farmer|\/my\/organisation)?$/],
   ["POST", /^\/donations$/],
   ["PATCH", /^\/donations\/\d+\/(claim|claim-and-order)$/],
-  ["GET", /^\/organisations(\/\d+)?$/],
+  ["GET", /^\/organisations(\/\d+|\/my)?$/],
   ["POST", /^\/organisations$/],
   ["PUT", /^\/organisations\/\d+$/],
   ["PATCH", /^\/organisations\/\d+\/status$/],
+  // Role profiles.
+  ["GET", /^\/profile\/me$/],
+  ["POST", /^\/(farms|drivers\/profile|kitchens)$/],
+  ["PUT", /^\/(farms\/\d+|drivers\/profile|kitchens\/\d+)$/],
+  // Earnings and payouts.
+  ["GET", /^\/earnings(\/transactions|\/payouts)?$/],
+  ["GET", /^\/connect\/status$/],
+  ["POST", /^\/connect\/(onboard|dashboard-link)$/],
 ];
 
 // Endpoints whose every request is live, whatever the path. The order endpoints also read the
@@ -76,6 +85,7 @@ const LIVE_ROUTES: [method: string, path: RegExp][] = [
 // for the marketplace, so it is switched on here by endpoint rather than by path.
 const LIVE_ENDPOINTS = new Set([
   "myOrders",
+  "listFarmerOrders",
   "getOrder",
   "assignedOrders",
   "unassignedOrders",
@@ -87,14 +97,12 @@ const LIVE_ENDPOINTS = new Set([
   "myFarmerDonations",
   "myOrganisationDonations",
   "allDonationsAdmin",
-  "myOrganisation",
 ]);
 
 // Lists the backend has no endpoint for yet. These come back empty, so an account never sees
 // made-up figures as if they were its own. Move a route to LIVE_ROUTES (with its
 // real path) once the backend provides it.
 const NO_BACKEND_YET: [method: string, path: RegExp][] = [
-  ["GET", /^\/orders\/my\/farmer$/], // a farmer's incoming orders
   ["GET", /^\/analytics\/farmer\/revenue$/], // daily revenue for the dashboard chart
 ];
 
@@ -152,25 +160,25 @@ function productBody({ coverImage, images, ...fields }: Partial<ProductWrite>): 
 type Fetch = (arg: string | FetchArgs) => PromiseLike<{ data?: unknown; error?: FetchBaseQueryError }> | { data?: unknown; error?: FetchBaseQueryError };
 
 /**
- * The API's order has no farm, pickup address, price or photo on it. Those live on the product,
- * so each order is completed from its product: farm name, pickup address, unit price, total and
- * cover photo. A product that has since been deleted simply leaves those blank.
- * (The delivery address is not available from any endpoint yet.)
+ * Orders carry the farm, address and price, but not the photo, and older orders can have gaps.
+ * The photo and anything missing are filled in from the order's product. A product that has
+ * since been deleted simply leaves those blank.
  */
 async function completeOrders(fetch: Fetch, orders: Order[]): Promise<Order[]> {
-  const ids = [...new Set(orders.map((o) => o.productId))];
-  const found = await Promise.all(ids.map((id) => fetch(`/products/${id}`)));
-  const byId = new Map(ids.map((id, i) => [id, found[i].error ? undefined : (found[i].data as Product | undefined)]));
+  const products = await productsById(
+    fetch,
+    orders.map((o) => o.productId),
+  );
   return orders.map((o) => {
-    const product = byId.get(o.productId);
-    if (!product) return o;
+    const product = products.get(o.productId);
+    const unitPrice = o.unitPrice ?? product?.price;
     return {
       ...o,
-      farmerName: o.farmerName ?? product.farmerName,
-      pickupAddress: o.pickupAddress ?? product.pickupAddress,
-      unitPrice: product.price,
-      total: o.total ?? Math.round(product.price * o.quantity * 100) / 100,
-      coverImageUrl: product.coverImageUrl,
+      farmerName: o.farmName ?? o.farmerName ?? product?.farmerName,
+      pickupAddress: o.pickupAddress ?? product?.pickupAddress,
+      unitPrice,
+      total: o.totalPence != null ? o.totalPence / 100 : unitPrice != null ? Math.round(unitPrice * o.quantity * 100) / 100 : undefined,
+      coverImageUrl: product?.coverImageUrl,
     };
   });
 }
@@ -232,21 +240,31 @@ const surplusFromProduct = (p: Product): Surplus => ({
 
 /** The API's organisation, in the shape the pages use. */
 type ApiOrganisation = { id: number; name: string; type: Organisation["type"]; charityNumber?: string | null; registrationStatus?: string | null; verifiedAt?: string | null; userId?: number; userName?: string | null };
+// CONFIRM WITH BACKEND: the exact registrationStatus values. Matched whole, never by substring:
+// "INACTIVE" contains "ACTIVE" and "PENDING_VERIFICATION" contains "VERIF", and neither is verified.
+const VERIFIED_STATUSES = new Set(["VERIFIED", "APPROVED", "ACTIVE"]);
+const PENDING_STATUSES = new Set(["PENDING", "PENDING_VERIFICATION", "PENDING_REVIEW", "IN_REVIEW", "UNDER_REVIEW", "SUBMITTED"]);
 function toOrganisation(o: ApiOrganisation): Organisation {
-  // CONFIRM WITH BACKEND: the exact registrationStatus values. Anything that reads as approved
-  // counts as verified, anything waiting as pending, and the rest as not verified.
   const status = (o.registrationStatus ?? "").toUpperCase();
-  const verificationLevel = o.verifiedAt || /VERIF|APPROV|ACTIVE/.test(status) ? (/UNVERIF/.test(status) ? "UNVERIFIED" : "VERIFIED") : /PEND|REVIEW|SUBMIT|NEW/.test(status) ? "PENDING" : "UNVERIFIED";
+  // A stated status always wins: a group that was verified and later turned down keeps its verifiedAt.
+  const verified = status ? VERIFIED_STATUSES.has(status) : !!o.verifiedAt;
+  const verificationLevel = verified ? "VERIFIED" : PENDING_STATUSES.has(status) ? "PENDING" : "UNVERIFIED";
   return { id: o.id, name: o.name, type: o.type, charityNumber: o.charityNumber ?? undefined, verificationLevel, userId: o.userId };
 }
 // CONFIRM WITH BACKEND: the values PATCH /organisations/{id}/status accepts.
 const ORG_STATUS: Record<NonNullable<Organisation["verificationLevel"]>, string> = { VERIFIED: "VERIFIED", PENDING: "PENDING", UNVERIFIED: "REJECTED" };
-// There is no "my organisation" endpoint, so its id is remembered after applying.
-const orgKey = (userId: number) => `fn_org_${userId}`;
-const rememberOrg = (o: { id: number; userId?: number }) => {
-  try {
-    if (o.userId) window.localStorage.setItem(orgKey(o.userId), String(o.id));
-  } catch {}
+
+type ApiEarning = Omit<EarningLine, "label" | "date"> & { productName?: string | null; createdAt: string };
+const toEarningLine = ({ productName, createdAt, ...e }: ApiEarning): EarningLine => ({
+  ...e,
+  date: createdAt,
+  label: productName || (e.type === "DELIVERY_FEE" ? "Delivery" : "Sale"),
+});
+type ApiPayout = { id: string; amountPence: number; status?: string | null; arrivalDate?: string | null; createdAt: string };
+const toPayoutLine = (p: ApiPayout): PayoutLine => {
+  // Stripe's words: paid, pending, in_transit, failed, canceled.
+  const status = (p.status ?? "").toUpperCase();
+  return { id: p.id, amountPence: p.amountPence, date: p.arrivalDate ?? p.createdAt, status: status === "PAID" ? "PAID" : /^(FAILED|CANCELL?ED)$/.test(status) ? "FAILED" : "PENDING" };
 };
 
 export const api = createApi({
@@ -308,9 +326,9 @@ export const api = createApi({
       invalidatesTags: ["Product", "Market"],
     }),
 
-    // Orders. CONFIRM WITH BACKEND: no farmer-scoped list is documented yet; this assumes GET /orders/my/farmer.
+    // A farmer's incoming orders.
     listFarmerOrders: b.query<Order[], void>({
-      query: () => "/orders/my/farmer",
+      queryFn: (_arg, _api, _extra, fetch) => orderList(fetch, "/orders/my/farmer"),
       providesTags: ["Order"],
     }),
 
@@ -463,6 +481,12 @@ export const api = createApi({
       query: (id) => ({ url: `/orders/${id}/assign`, method: "PATCH" }),
       invalidatesTags: ["Jobs", "Order", "MyOrders", "Notification"],
     }),
+    // Used only for orders the API marks deliveryCodeRequired. The server checks the code; the
+    // driver's browser never receives it.
+    confirmDelivery: b.mutation<Order, { id: number; code: string }>({
+      query: ({ id, code }) => ({ url: `/orders/${id}/confirm-delivery`, method: "POST", body: { code } }),
+      invalidatesTags: ["Jobs", "Order", "MyOrders", "AdminOrders", "Donation", "Notification", "Earnings"],
+    }),
     updateOrderStatus: b.mutation<Order, { id: number; status: OrderStatus }>({
       query: ({ id, status }) => ({
         url: `/orders/${id}/status`,
@@ -526,26 +550,13 @@ export const api = createApi({
     }),
 
     // ───────── Organisations (spec §3.11). CONFIRM WITH BACKEND: GET /organisations/my is assumed. ─────────
-    // There is no GET /organisations/my. The signed-in user's organisation is found by the id
-    // remembered when they applied, or failing that by looking for theirs in the list.
-    // Null means none yet, and the page shows the apply form.
+    // Null means no organisation yet (404), and the page shows the apply form.
     myOrganisation: b.query<Organisation | null, void>({
       queryFn: async (_arg, _api, _extra, fetch) => {
-        const me = await fetch("/users/me");
-        if (me.error) return { error: me.error };
-        const userId = (me.data as User).id;
-        let saved = 0;
-        try {
-          saved = Number(window.localStorage.getItem(orgKey(userId))) || 0;
-        } catch {}
-        if (saved) {
-          const one = await fetch(`/organisations/${saved}`);
-          if (!one.error && one.data) return { data: toOrganisation(one.data as ApiOrganisation) };
-        }
-        const all = await fetch("/organisations");
-        const mine = all.error ? undefined : ((all.data as ApiOrganisation[] | null) ?? []).find((o) => o.userId === userId);
-        if (mine) rememberOrg(mine);
-        return { data: mine ? toOrganisation(mine) : null };
+        const res = await fetch("/organisations/my");
+        if (res.error) return res.error.status === 404 ? { data: null } : { error: res.error };
+        const org = res.data as ApiOrganisation | null;
+        return { data: org?.id ? toOrganisation(org) : null };
       },
       providesTags: ["Org"],
     }),
@@ -555,10 +566,7 @@ export const api = createApi({
     >({
       // The API takes name, type and charityNumber. The owner comes from the session.
       query: ({ name, type, charityNumber }) => ({ url: "/organisations", method: "POST", body: { name, type, charityNumber } }),
-      transformResponse: (o: ApiOrganisation) => {
-        rememberOrg(o);
-        return toOrganisation(o);
-      },
+      transformResponse: toOrganisation,
       invalidatesTags: ["Org", "Orgs"],
     }),
     updateOrganisation: b.mutation<
@@ -789,6 +797,7 @@ export const api = createApi({
     // The owner is never sent; the backend takes it from the session.
     getMyProfile: b.query<ProfileStatus, void>({
       query: () => "/profile/me",
+      transformResponse: (s: ProfileStatus) => ({ ...s, missingFields: s.missingFields ?? [], profile: s.profile?.id ? s.profile : null }),
       providesTags: ["Profile"],
     }),
     createFarm: b.mutation<Farm, Partial<Farm>>({
@@ -818,15 +827,36 @@ export const api = createApi({
 
     // ───────── Earnings and payouts (payouts spec §5) ─────────
     getEarningsSummary: b.query<EarningsSummary, void>({
-      query: () => "/earnings",
+      // The money is on /earnings; what Stripe still needs from the seller is on /connect/status.
+      queryFn: async (_arg, _api, _extra, fetch) => {
+        const res = await fetch("/earnings");
+        if (res.error) return { error: res.error };
+        const status = await fetch("/connect/status");
+        // 404: no Stripe account yet, so nothing is being asked for.
+        if (status.error && status.error.status !== 404) return { error: status.error };
+        const requirementsDue = (status.data as { requirementsDue?: string[] | null } | undefined)?.requirementsDue ?? [];
+        return { data: { ...(res.data as EarningsSummary), requirementsDue } };
+      },
       providesTags: ["Earnings"],
     }),
-    getEarningTransactions: b.query<EarningLine[], { month?: string } | void>({
-      query: (arg) => ({ url: "/earnings/transactions", params: arg ?? undefined }),
+    getEarningTransactions: b.query<EarningLine[], void>({
+      // Paged by the API. The table filters by month, so it needs every page.
+      queryFn: async (_arg, _api, _extra, fetch) => {
+        const lines: EarningLine[] = [];
+        for (let page = 0; ; page++) {
+          const res = await fetch({ url: "/earnings/transactions", params: { page, size: 100 } });
+          if (res.error) return { error: res.error };
+          const body = res.data as { content?: ApiEarning[]; last?: boolean } | null;
+          const rows = body?.content ?? [];
+          lines.push(...rows.map(toEarningLine));
+          if (!rows.length || body?.last !== false) return { data: lines };
+        }
+      },
       providesTags: ["Earnings"],
     }),
     getPayoutHistory: b.query<PayoutLine[], void>({
       query: () => "/earnings/payouts",
+      transformResponse: (rows: ApiPayout[] | null) => (rows ?? []).map(toPayoutLine),
       providesTags: ["Earnings"],
     }),
     // Mutations, not queries: each call mints a single-use, short-lived Stripe link. Never cache one.
@@ -895,6 +925,7 @@ export const {
   useUnassignedOrdersQuery,
   useAssignOrderMutation,
   useUpdateOrderStatusMutation,
+  useConfirmDeliveryMutation,
   useListDonationsQuery,
   useMyFarmerDonationsQuery,
   useMyOrganisationDonationsQuery,

@@ -11,8 +11,11 @@ export interface EarningsSummary {
   clearingPence: number;
   availablePence: number;
   paidOutPence: number;
-  nextPayoutDate: string | null; // ISO date
-  nextPayoutPence: number;
+  /** Sent to Stripe, not yet in the bank. */
+  transferredPence?: number;
+  // The API has no payout schedule yet, so these can be absent.
+  nextPayoutDate?: string | null; // ISO date
+  nextPayoutPence?: number;
 }
 
 export interface EarningLine {
@@ -31,7 +34,7 @@ export interface PayoutLine {
   id: string;
   date: string;
   amountPence: number;
-  bankLast4: string;
+  bankLast4?: string;
   status: "PENDING" | "PAID" | "FAILED";
 }
 

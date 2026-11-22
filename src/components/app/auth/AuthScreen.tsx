@@ -46,7 +46,7 @@ import {
 } from "@/lib/api/farmnomad";
 import { HOME } from "@/lib/navigation";
 import { hasProfileStep } from "@/lib/types/profile";
-import { clearSession, setSession } from "@/lib/auth/session";
+import { clearSession, getSession, setSession } from "@/lib/auth/session";
 import type { Role } from "@/lib/types/api";
 import { useApp } from "@/components/app/AppState";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
@@ -216,8 +216,20 @@ export function AuthScreen({ initial }: { initial: AuthMode }) {
     window.history.replaceState(null, "", PATH[m]);
   };
 
+  // Already signed in: log in and sign up lead straight into the app. Read once on mount, so it
+  // doesn't race the login form, which stores the session before it has chosen where to go.
+  const [alreadyIn] = useState(
+    () => (initial === "login" || initial === "register") && !!getSession(),
+  );
+  useEffect(() => {
+    if (alreadyIn) window.location.replace("/dashboard");
+  }, [alreadyIn]);
+
   const visual = mode === "register" ? ROLES[role] : LOGIN_VISUAL;
   const visualKey = mode === "register" ? role : "login";
+
+  if (alreadyIn)
+    return <div className="min-h-[100dvh] bg-app-bg" aria-busy="true" />;
 
   return (
     <div className="grid min-h-[100dvh] bg-app-bg lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:p-3">
