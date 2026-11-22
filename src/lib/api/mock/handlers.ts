@@ -1318,7 +1318,7 @@ const routes: [string, RegExp, (m: RegExpMatchArray, r: Req) => Res][] = [
 
   ["GET", /^\/notifications\/my$/, () => ({ data: state[notesKey[role()]] })],
   [
-    "PUT",
+    "PATCH",
     /^\/notifications\/(\d+)\/read$/,
     (m) => {
       const n = state[notesKey[role()]].find((x) => x.id === +m[1]);

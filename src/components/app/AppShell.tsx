@@ -8,6 +8,7 @@ import { Toaster } from "sonner";
 import { Bell, Check, HandHeart, List, Package, Receipt, ShoppingBagOpen } from "@phosphor-icons/react/dist/ssr";
 import { useGetCartQuery, useMarkNotificationReadMutation, useMeQuery, useMyNotificationsQuery } from "@/lib/api/farmnomad";
 import { getSession } from "@/lib/auth/session";
+import { useSessionGuard } from "@/lib/auth/useSessionGuard";
 import { HOME, NAV, allNav, canOpen } from "@/lib/navigation";
 import { useWorkspaceName } from "@/lib/hooks/useWorkspaceName";
 import { cn } from "@/lib/cn";
@@ -40,6 +41,7 @@ function Frame({ children }: { children: ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   useShortcuts();
+  useSessionGuard();
 
   // These pages need a session. Without one, go to log in. With one, GET /users/me says who this
   // is, and their role decides which pages they get (the saved role is only a first guess).
@@ -188,7 +190,7 @@ function Notifications() {
             </div>
             <ul className="max-h-[360px] overflow-y-auto p-1.5">
               {data.map((n) => {
-                const Icon = nIcon[n.type];
+                const Icon = nIcon[n.type] ?? Package; // the backend may add types this build doesn't know
                 return (
                   <li key={n.id}>
                     <button

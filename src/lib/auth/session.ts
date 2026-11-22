@@ -3,7 +3,12 @@
  * page refresh stays signed in. The user and their role are not stored here; they come from
  * GET /users/me each time the app loads.
  */
-export type Session = { token: string; refreshToken?: string };
+export type Session = {
+  /** Changes on every login and survives token refresh, so it tells one sign-in from another. */
+  id: string;
+  token: string;
+  refreshToken?: string;
+};
 
 const KEY = "fn_session";
 const LEGACY_KEY = "fn_token"; // the mock-era key, cleared on sign-out so nothing stale lingers
@@ -13,15 +18,17 @@ export function getSession(): Session | null {
   try {
     const raw = window.localStorage.getItem(KEY);
     const s = raw ? (JSON.parse(raw) as Partial<Session>) : null;
-    return s && typeof s.token === "string" && s.token ? { token: s.token, refreshToken: s.refreshToken } : null;
+    return s && typeof s.token === "string" && s.token ? { id: s.id ?? "", token: s.token, refreshToken: s.refreshToken } : null;
   } catch {
     return null;
   }
 }
 
-export function setSession(s: Session) {
+/** Without an id this is a new sign-in. A refresh passes the id it already had. */
+export function setSession(s: Omit<Session, "id"> & { id?: string }) {
+  const id = s.id ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
   try {
-    window.localStorage.setItem(KEY, JSON.stringify({ token: s.token, refreshToken: s.refreshToken }));
+    window.localStorage.setItem(KEY, JSON.stringify({ id, token: s.token, refreshToken: s.refreshToken }));
   } catch {}
 }
 

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useMeQuery } from "@/lib/api/farmnomad";
 import { getSession } from "@/lib/auth/session";
+import { useSessionGuard } from "@/lib/auth/useSessionGuard";
 import { HOME } from "@/lib/navigation";
 import { PROFILE_META, hasProfileStep } from "@/lib/types/profile";
 import { OnboardingFrame } from "@/components/profile/OnboardingFrame";
@@ -18,6 +19,7 @@ export default function OnboardingProfilePage() {
   const [signedIn] = useState(() => !!getSession());
   const { data: me } = useMeQuery(undefined, { skip: !signedIn });
   const role = me?.role;
+  useSessionGuard();
 
   useEffect(() => {
     if (!signedIn) router.replace("/login");

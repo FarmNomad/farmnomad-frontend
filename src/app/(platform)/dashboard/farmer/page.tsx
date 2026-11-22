@@ -37,7 +37,9 @@ export default function FarmerDashboard() {
     const prev = revenue.slice(-range * 2, -range);
     const sum = (a: typeof cur) => a.reduce((s, d) => s + d.value, 0);
     const total = sum(cur);
-    const change = prev.length ? (total - sum(prev)) / sum(prev) : null;
+    const before = sum(prev);
+    // No percentage against nothing: dividing by zero showed "NaN%".
+    const change = before ? (total - before) / before : null;
     return { cur, total, change };
   }, [revenue, range]);
 

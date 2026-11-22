@@ -350,7 +350,7 @@ export const api = createApi({
       providesTags: ["Notification"],
     }),
     markNotificationRead: b.mutation<Notification, number>({
-      query: (id) => ({ url: `/notifications/${id}/read`, method: "PUT" }),
+      query: (id) => ({ url: `/notifications/${id}/read`, method: "PATCH" }),
       invalidatesTags: ["Notification"],
     }),
 
@@ -497,8 +497,10 @@ export const api = createApi({
         "Jobs",
         "Order",
         "MyOrders",
+        "AdminOrders",
         "Donation",
         "Notification",
+        "Earnings",
       ],
     }),
 
@@ -530,7 +532,8 @@ export const api = createApi({
           url: `/donations/${id}/${withDelivery ? "claim-and-order" : "claim"}`,
           method: "PATCH",
         }),
-        invalidatesTags: ["Donation", "Jobs", "Notification"],
+        // Claiming with delivery creates an order, shown on Deliveries and on admin orders.
+        invalidatesTags: ["Donation", "Jobs", "MyOrders", "AdminOrders", "Notification"],
       },
     ),
 
