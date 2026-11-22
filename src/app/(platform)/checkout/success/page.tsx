@@ -18,7 +18,8 @@ export default function CheckoutSuccessPage() {
   useEffect(() => {
     if (ran.current) return;
     ran.current = true;
-    const id = new URLSearchParams(window.location.search).get("session_id");
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("session_id") ?? params.get("sessionId");
     if (!id) return setFailed(true);
     confirm(id)
       .unwrap()
@@ -44,8 +45,8 @@ export default function CheckoutSuccessPage() {
         <motion.circle cx="32" cy="32" r="30" fill="var(--a-accent-soft)" initial={reduce ? false : { scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", duration: 0.5, bounce: 0.3 }} style={{ originX: "50%", originY: "50%" }} />
         <motion.path d="M20 33 l8 8 l16 -18" fill="none" stroke="var(--a-accent)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" initial={reduce ? false : { pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.45, delay: 0.25, ease: [0.23, 1, 0.32, 1] }} />
       </svg>
-      <h1 className="mt-6 font-display text-[28px] font-medium tracking-[-0.03em]">Order placed</h1>
-      <p className="mt-2 text-app-muted">Paid, and on its way to the farm to be packed. We&apos;ll notify you when a driver picks it up.</p>
+      <h1 className="mt-6 font-display text-[28px] font-medium tracking-[-0.03em]">{orders ? "Order placed" : "Confirming your payment"}</h1>
+      <p className="mt-2 text-app-muted">{orders ? "Paid, and on its way to the farm to be packed. We'll notify you when a driver picks it up." : "This can take a moment. Please keep this page open."}</p>
 
       <div className="mt-8 w-full rounded-xl p-4 text-left shadow-[0_0_0_1px_var(--a-line)]">
         {!orders ? (
@@ -53,6 +54,8 @@ export default function CheckoutSuccessPage() {
             <Skeleton className="h-5 w-2/3" />
             <Skeleton className="h-5 w-1/2" />
           </div>
+        ) : !orders.length ? (
+          <p className="text-app-muted">You&apos;ll find the details in My orders.</p>
         ) : (
           <ul className="grid gap-2">
             {orders.map((o) => (

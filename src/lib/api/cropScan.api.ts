@@ -23,7 +23,12 @@ const cropScanApi = api.enhanceEndpoints({ addTagTypes: ["CropScan"] }).injectEn
       query: (body) => ({ url: "/crop-scans/diagnose", method: "POST", body }),
       invalidatesTags: ["CropScan"],
     }),
-    myCropScans: b.query<CropScan[], void>({ query: () => "/crop-scans/my", providesTags: ["CropScan"] }),
+    myCropScans: b.query<CropScan[], void>({
+      query: () => "/crop-scans/my",
+      // The API's scan has scannedAt.
+      transformResponse: (rows: (Omit<CropScan, "createdAt"> & { scannedAt: string })[] | null) => (rows ?? []).map(({ scannedAt, ...s }) => ({ ...s, createdAt: scannedAt })),
+      providesTags: ["CropScan"],
+    }),
     deleteCropScan: b.mutation<void, number>({ query: (id) => ({ url: `/crop-scans/${id}`, method: "DELETE" }), invalidatesTags: ["CropScan"] }),
     // ADMIN: everyone's scans, or one farmer's. CONFIRM WITH BACKEND: GET /crop-scans?farmerId= isn't in the spec yet.
     allCropScans: b.query<CropScan[], { farmerId?: number } | void>({

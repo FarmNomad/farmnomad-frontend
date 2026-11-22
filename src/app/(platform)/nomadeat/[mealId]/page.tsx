@@ -11,6 +11,7 @@ import { QtyStepper } from "@/components/app/shop/QtyStepper";
 import { DietTags, MealArt } from "@/components/app/meals/meta";
 import { Button, EmptyState, Skeleton, gbp } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
+import { FEATURES } from "@/lib/features";
 
 /** One meal: what it is, who cooks it, which farms it came from, and order. */
 export default function MealPage() {
@@ -98,7 +99,10 @@ export default function MealPage() {
             <p className={cn("ml-auto text-ui-sm", out ? "text-app-red" : m.portionsAvailable <= 3 ? "text-app-amber" : "text-app-muted")}>{out ? "Sold out for today" : `${m.portionsAvailable} portions left`}</p>
           </div>
 
-          {!out && !mineToCook && (
+          {!out && !mineToCook && !FEATURES.mealOrders && (
+            <p className="mt-5 rounded-2xl bg-app-hover p-4 text-app-muted">Ordering from NomadEat opens soon. You can browse the kitchens and their menus for now.</p>
+          )}
+          {!out && !mineToCook && FEATURES.mealOrders && (
             <div className="mt-5 grid gap-3 rounded-2xl p-4 shadow-[0_0_0_1px_var(--a-line)]">
               <div className="flex items-center gap-3">
                 <QtyStepper value={qty} max={m.portionsAvailable} label={m.name} removable={false} onChange={(n) => setQty(Math.max(1, n))} />
@@ -123,11 +127,13 @@ export default function MealPage() {
               </span>
               <div className="min-w-0 flex-1">
                 <p className="font-medium">{m.kitchenName}</p>
-                <p className="flex items-center gap-1 text-ui-sm text-app-faint">
-                  <MapPin className="size-3.5" /> {m.kitchenArea}
-                </p>
+                {m.kitchenArea && (
+                  <p className="flex items-center gap-1 text-ui-sm text-app-faint">
+                    <MapPin className="size-3.5" /> {m.kitchenArea}
+                  </p>
+                )}
               </div>
-              {!mineToCook && m.kitchenId && (
+              {!mineToCook && !!m.kitchenId && (
                 <Link href={`/messages?to=${m.kitchenId}&name=${encodeURIComponent(m.kitchenName ?? "")}`} aria-label={`Message ${m.kitchenName}`} className="grid size-9 place-items-center rounded-full bg-app-hover text-app-muted transition-colors hover:text-app-text">
                   <ChatsCircle className="size-4" />
                 </Link>

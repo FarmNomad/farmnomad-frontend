@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Trash, UsersThree } from "@phosphor-icons/react/dist/ssr";
-import { useDeleteUserMutation, useListUsersQuery, useMockRestoreUserMutation } from "@/lib/api/farmnomad";
+import { useDeleteUserMutation, useListUsersQuery } from "@/lib/api/farmnomad";
 import type { Role, User } from "@/lib/types/api";
 import { PageHeader } from "@/components/app/PageHeader";
 import { UserSheet } from "@/components/app/admin/UserSheet";
@@ -17,7 +17,6 @@ const ORDER: Role[] = ["CUSTOMER", "FARMER", "DRIVER", "ORGANISATION", "KITCHEN"
 export default function AdminUsers() {
   const { data, isLoading } = useListUsersQuery();
   const [del, { isLoading: deleting }] = useDeleteUserMutation();
-  const [restore] = useMockRestoreUserMutation();
   const [f, setF] = useState<F>("all");
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<User | null>(null);
@@ -46,7 +45,7 @@ export default function AdminUsers() {
       await del(u.id).unwrap();
       setRemoving(null);
       setOpen(null);
-      toast(`Removed ${u.fullName}`, { action: { label: "Undo", onClick: () => restore(u) } });
+      toast(`Removed ${u.fullName}`);
     } catch (e) {
       setRemoving(null);
       toast.error((e as { data?: { message?: string } })?.data?.message ?? "Couldn't remove that account");
@@ -105,7 +104,7 @@ export default function AdminUsers() {
       <Confirm
         open={!!removing}
         title={`Remove ${removing?.fullName}?`}
-        body="They'll lose access straight away. Their past orders stay in the records."
+        body="This can't be undone. They'll lose access to their account."
         action="Remove account"
         danger
         busy={deleting}

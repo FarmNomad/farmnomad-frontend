@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/app/AppImage";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { ImageSquare, Trash, Warning, X } from "@phosphor-icons/react/dist/ssr";
@@ -22,6 +22,8 @@ type Form = typeof empty;
 // Photos picked in this session, by their preview URL. The form keeps URLs (for showing and
 // ordering); this is how the real file is found again when the product is saved.
 const pickedFiles = new Map<string, File>();
+/** The file behind a preview URL from PhotosPicker, for forms that upload it themselves. */
+export const pickedFile = (src: string) => pickedFiles.get(src);
 type Errors = Partial<Record<keyof Form, string>>;
 
 export function ProductSheet() {

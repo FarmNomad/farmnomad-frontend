@@ -31,6 +31,8 @@ async function readBody(response: Response): Promise<unknown> {
   try {
     return JSON.parse(text);
   } catch {
+    // A proxy's error page or a bare 5xx body isn't something to show a user.
+    if (response.status >= 500 || /^\s*</.test(text)) return { message: null };
     return { message: text };
   }
 }

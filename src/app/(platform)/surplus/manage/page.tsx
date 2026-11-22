@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/app/AppImage";
 import { HandHeart, Plus } from "@phosphor-icons/react/dist/ssr";
 import { useListMyProductsQuery, useListMySurplusQuery } from "@/lib/api/farmnomad";
 import { useApp } from "@/components/app/AppState";

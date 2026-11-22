@@ -11,10 +11,13 @@ import { MealSheet, Switch } from "@/components/app/meals/MealSheet";
 import { DietTags, MealArt } from "@/components/app/meals/meta";
 import { Button, EmptyState, IconButton, Skeleton, gbp } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
+import { apiError } from "@/lib/api/errors";
+import { LoadError } from "@/components/app/states";
 
 /** Kitchen menu (spec §7 /meals): every meal, portions left, and an on/off switch. */
 export default function MenuPage() {
-  const { data, isLoading } = useMyMealsQuery();
+  const { data, isLoading, isError, refetch } = useMyMealsQuery();
+  const failed = isError && !data;
   const [update] = useUpdateMealMutation();
   const [remove] = useDeleteMealMutation();
   const [create] = useCreateMealMutation();
@@ -23,7 +26,11 @@ export default function MenuPage() {
   const on = data?.filter((m) => m.available).length ?? 0;
 
   async function del(m: Meal) {
-    await remove(m.id);
+    try {
+      await remove(m.id).unwrap();
+    } catch (err) {
+      return void toast.error(`Couldn't remove ${m.name}`, { description: apiError(err, "Try again.") });
+    }
     toast(`Removed ${m.name}`, {
       action: {
         label: "Undo",
@@ -51,7 +58,9 @@ export default function MenuPage() {
         }
       />
       <div className="px-4 md:px-8">
-        {isLoading ? (
+        {failed ? (
+          <LoadError what="your menu" onRetry={refetch} />
+        ) : isLoading ? (
           <div className="grid gap-2">
             {[0, 1, 2].map((i) => (
               <Skeleton key={i} className="h-20 rounded-xl" />
@@ -92,7 +101,7 @@ export default function MenuPage() {
                     label={`${m.name} on the menu`}
                     disabled={m.portionsAvailable === 0 && !m.available}
                     onChange={(v) => {
-                      update({ id: m.id, available: v });
+                      update({ id: m.id, available: v }).unwrap().catch((err) => toast.error(`Couldn't update ${m.name}`, { description: apiError(err, "Try again.") }));
                       toast(v ? `${m.name} is on the menu` : `${m.name} is hidden`);
                     }}
                   />

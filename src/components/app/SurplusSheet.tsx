@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/app/AppImage";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Minus, Plus } from "@phosphor-icons/react/dist/ssr";

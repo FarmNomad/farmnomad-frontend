@@ -9,6 +9,8 @@ import { PageHeader } from "@/components/app/PageHeader";
 import { ConditionsWidget, CropCard, ForecastRow } from "@/components/app/farm-tools/weather";
 import { Button, Skeleton } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
+import { FEATURES } from "@/lib/features";
+import { NotAvailableYet } from "@/components/app/states";
 
 const KEY = "fn_weather_postcode";
 
@@ -17,6 +19,18 @@ const KEY = "fn_weather_postcode";
  * then conditions and planting advice from our API. The crop calendar lives in the AI service.
  */
 export default function WeatherPage() {
+  if (FEATURES.weather) return <WeatherTools />;
+  return (
+    <div className="mx-auto max-w-[1200px] pb-16">
+      <PageHeader title="Weather & Planting" />
+      <div className="px-4 md:px-8">
+        <NotAvailableYet title="Weather is coming soon" body="Soil, frost and planting advice will show here once the weather service is switched on." />
+      </div>
+    </div>
+  );
+}
+
+function WeatherTools() {
   const { data: me } = useMeQuery();
   const [place, setPlace] = useState<Place | null>(null);
   const [input, setInput] = useState("");

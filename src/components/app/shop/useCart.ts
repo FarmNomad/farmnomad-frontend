@@ -4,13 +4,17 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAddToCartMutation, useGetCartQuery, useRemoveCartItemMutation, useUpdateCartQtyMutation } from "@/lib/api/farmnomad";
 import type { Product } from "@/lib/types/api";
+import { useApp } from "@/components/app/AppState";
 
 const message = (e: unknown) => ((e as { data?: { message?: string } })?.data?.message ?? "Try again in a moment.");
 
 /** Cart actions with consistent feedback, shared by cards, the product page and the cart. */
 export function useCart() {
   const router = useRouter();
-  const { data: items = [] } = useGetCartQuery();
+  const { role } = useApp();
+  // Only customers and kitchens have a cart; the API refuses it to everyone else.
+  const canBuy = role === "CUSTOMER" || role === "KITCHEN";
+  const { data: items = [] } = useGetCartQuery(undefined, { skip: !canBuy });
   const [add, { isLoading: adding }] = useAddToCartMutation();
   const [update] = useUpdateCartQtyMutation();
   const [remove] = useRemoveCartItemMutation();
@@ -34,7 +38,11 @@ export function useCart() {
     const it = itemFor(productId);
     if (!it) return;
     if (quantity < 1) {
-      await remove(it.id);
+      try {
+        await remove(it.id).unwrap();
+      } catch (e) {
+        toast.error("Couldn't remove that", { description: message(e) });
+      }
       return;
     }
     try {
@@ -44,5 +52,5 @@ export function useCart() {
     }
   }
 
-  return { items, itemFor, addToCart, setQty, adding, count: items.reduce((s, i) => s + i.quantity, 0) };
+  return { canBuy, items, itemFor, addToCart, setQty, adding, count: items.reduce((s, i) => s + i.quantity, 0) };
 }

@@ -148,7 +148,7 @@ const nIcon = { ORDER_UPDATE: Receipt, SURPLUS_ALERT: HandHeart, DONATION_UPDATE
 
 function Notifications() {
   const [open, setOpen] = useState(false);
-  const { data = [] } = useMyNotificationsQuery();
+  const { data = [], isLoading, isError } = useMyNotificationsQuery(undefined, { pollingInterval: 30000 });
   const [markRead] = useMarkNotificationReadMutation();
   const unread = data.filter((n) => !n.read).length;
   const box = useRef<HTMLDivElement>(null);
@@ -189,6 +189,7 @@ function Notifications() {
               )}
             </div>
             <ul className="max-h-[360px] overflow-y-auto p-1.5">
+              {!data.length && <li className="px-3 py-8 text-center text-app-faint">{isLoading ? "Loading…" : isError ? "We couldn't load your notifications." : "No notifications yet."}</li>}
               {data.map((n) => {
                 const Icon = nIcon[n.type] ?? Package; // the backend may add types this build doesn't know
                 return (

@@ -9,10 +9,12 @@ import { PageHeader } from "@/components/app/PageHeader";
 import { CUISINES, DIETARY, DietTags, MealArt, mealOrderMeta } from "@/components/app/meals/meta";
 import { EmptyState, Pill, Skeleton, gbp } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
+import { FEATURES } from "@/lib/features";
+import { LoadError } from "@/components/app/states";
 
 /** NomadEat browse (spec §7 /nomadeat): ready meals from local kitchens, made with produce from FarmNomad farms. */
 export default function NomadEatPage() {
-  const { data, isLoading } = useListMealsQuery();
+  const { data, isLoading, isError, refetch } = useListMealsQuery();
   const { data: mine } = useMyMealOrdersQuery();
   const [q, setQ] = useState("");
   const [cuisine, setCuisine] = useState<string | null>(null);
@@ -71,6 +73,7 @@ export default function NomadEatPage() {
             ))}
           </div>
         </div>
+        {FEATURES.mealExtras && (
         <div className="-mt-2 flex flex-wrap gap-1.5" role="group" aria-label="Dietary">
           {DIETARY.map((d) => (
             <button key={d} onClick={() => setDiet(diet === d ? null : d)} aria-pressed={diet === d} className={cn("h-7 rounded-full px-2.5 text-[12px] font-medium transition-[background-color,box-shadow,color]", diet === d ? "bg-app-accent-soft text-app-accent shadow-[inset_0_0_0_1px_var(--a-accent)]" : "text-app-faint shadow-[inset_0_0_0_1px_var(--a-line)] hover:text-app-muted")}>
@@ -78,6 +81,7 @@ export default function NomadEatPage() {
             </button>
           ))}
         </div>
+        )}
 
         {isLoading ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -85,6 +89,8 @@ export default function NomadEatPage() {
               <Skeleton key={i} className="h-72 rounded-2xl" />
             ))}
           </div>
+        ) : isError && !data ? (
+          <LoadError what="NomadEat" onRetry={refetch} />
         ) : !meals.length ? (
           <div className="rounded-xl shadow-[0_0_0_1px_var(--a-line)]">
             <EmptyState icon={<ForkKnife className="size-5" />} title={data?.length ? "No meals match" : "No meals right now"} body={data?.length ? "Try another cuisine or clear the filters." : "Kitchens near you add meals through the day."} />
@@ -104,7 +110,7 @@ export default function NomadEatPage() {
                       <p className="num shrink-0 font-medium">{gbp(m.price)}</p>
                     </div>
                     <p className="mt-0.5 flex items-center gap-1 text-ui-sm text-app-muted">
-                      <Storefront className="size-3.5" /> {m.kitchenName} · {m.kitchenArea}
+                      <Storefront className="size-3.5" /> {[m.kitchenName, m.kitchenArea].filter(Boolean).join(" · ")}
                     </p>
                     <p className="mt-2 line-clamp-2 text-ui-sm text-app-faint">{m.description}</p>
                     <div className="mt-3 flex flex-wrap items-center gap-2">

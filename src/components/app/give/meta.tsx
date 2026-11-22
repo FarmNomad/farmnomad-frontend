@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/app/AppImage";
 import { CheckCircle, CircleDashed, HandHeart, HourglassMedium, Truck, XCircle } from "@phosphor-icons/react/dist/ssr";
 import type { DonationStatus, OrganisationType, VerificationLevel } from "@/lib/types/api";
 import type { Tone } from "@/components/app/ui";

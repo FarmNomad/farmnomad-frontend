@@ -152,7 +152,7 @@ export default function AdminCropScans() {
             </div>
           ) : !rows.length ? (
             <div className="rounded-xl shadow-[0_0_0_1px_var(--a-line)]">
-              <EmptyState icon={<Scan className="size-5" />} title={data?.length ? "No scans match" : "No scans yet"} body={data?.length ? "Try another filter or clear the search." : "Scans appear here as farmers use the crop scanner."} />
+              <EmptyState icon={<Scan className="size-5" />} title={data?.length ? "No scans match" : "All-farm scans aren't available yet"} body={data?.length ? "Try another filter or clear the search." : "The server can't list every farmer's scans yet. Farmers can still see their own."} />
             </div>
           ) : (
             <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">

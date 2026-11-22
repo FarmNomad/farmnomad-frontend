@@ -7,6 +7,9 @@ import { useMarkMessageReadMutation, useMeQuery, useMyMessagesQuery, usePeopleQu
 import type { Message } from "@/lib/types/api";
 import { Avatar, EmptyState, IconButton, Skeleton, relDay, time } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
+import { toast } from "sonner";
+import { apiError } from "@/lib/api/errors";
+import { LoadError } from "@/components/app/states";
 
 type Thread = { id: number; name: string; last: Message; unread: number; messages: Message[] };
 
@@ -17,7 +20,7 @@ type Thread = { id: number; name: string; last: Message; unread: number; message
  */
 export default function MessagesPage() {
   const { data: me } = useMeQuery();
-  const { data: all, isLoading } = useMyMessagesQuery(undefined, { pollingInterval: 3000 });
+  const { data: all, isLoading, isError, refetch } = useMyMessagesQuery(undefined, { pollingInterval: 8000 });
   const [openId, setOpenId] = useState<number | null>(null);
   const [draftName, setDraftName] = useState<Record<number, string>>({});
   const [q, setQ] = useState("");
@@ -76,6 +79,10 @@ export default function MessagesPage() {
         <ul className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
           {isLoading ? (
             [0, 1, 2, 3].map((i) => <Skeleton key={i} className="mx-2 my-1.5 h-14" />)
+          ) : isError && !all ? (
+            <li>
+              <LoadError what="your messages" onRetry={refetch} />
+            </li>
           ) : !shown.length ? (
             <li className="px-3 py-10 text-center text-app-faint">{q ? "No one by that name." : "No messages yet."}</li>
           ) : (
@@ -125,10 +132,16 @@ function ThreadView({ t, meId, onBack }: { t: Pick<Thread, "id" | "name" | "mess
   const [text, setText] = useState("");
   const end = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
+  const marked = useRef(new Set<number>());
 
   // Read what's on screen.
   useEffect(() => {
-    t.messages.filter((m) => m.recipientId === meId && !m.read).forEach((m) => markRead(m.id));
+    for (const m of t.messages) {
+      // Once each: every mark refetches the list, which would otherwise send the rest again.
+      if (m.recipientId !== meId || m.read || marked.current.has(m.id)) continue;
+      marked.current.add(m.id);
+      markRead(m.id);
+    }
   }, [t.messages, meId, markRead]);
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });
@@ -143,9 +156,10 @@ function ThreadView({ t, meId, onBack }: { t: Pick<Thread, "id" | "name" | "mess
     if (!content) return;
     setText("");
     try {
-      await send({ recipientId: t.id, content, recipientName: t.name }).unwrap();
-    } catch {
+      await send({ recipientId: t.id, content }).unwrap();
+    } catch (err) {
       setText(content);
+      toast.error("That didn't send", { description: apiError(err, "Try again.") });
     }
   }
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -219,9 +233,9 @@ function ThreadView({ t, meId, onBack }: { t: Pick<Thread, "id" | "name" | "mess
   );
 }
 
-/** Demo directory. In the real app threads start from an order, job or donation. */
+/** The people on your orders (every account, for an admin). */
 function PeoplePicker({ onClose, onPick }: { onClose: () => void; onPick: (id: number, name: string) => void }) {
-  const { data } = usePeopleQuery();
+  const { data, isError } = usePeopleQuery();
   return (
     <div className="fixed inset-0 z-[80] grid items-start justify-items-center px-4 pt-[14vh]">
       <motion.div className="absolute inset-0 bg-black/20 dark:bg-black/50" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
@@ -237,6 +251,8 @@ function PeoplePicker({ onClose, onPick }: { onClose: () => void; onPick: (id: n
       >
         <p className="border-b border-app-line px-4 py-3 font-medium">New message</p>
         <ul className="max-h-[50vh] overflow-y-auto p-1.5">
+          {isError && <li className="px-3 py-6 text-center text-app-faint">We couldn&apos;t load your contacts. Close this and try again.</li>}
+          {data && !data.length && <li className="px-3 py-6 text-center text-app-faint">People from your orders and deliveries will appear here.</li>}
           {data?.map((p) => (
             <li key={p.id}>
               <button autoFocus={p === data[0]} onClick={() => onPick(p.id, p.name)} className="flex w-full items-center gap-3 rounded-[8px] px-2.5 py-2 text-left hover:bg-app-hover focus-visible:bg-app-hover">
@@ -247,7 +263,7 @@ function PeoplePicker({ onClose, onPick }: { onClose: () => void; onPick: (id: n
                 </span>
               </button>
             </li>
-          )) ?? <Skeleton className="m-2 h-10" />}
+          )) ?? (!isError && <Skeleton className="m-2 h-10" />)}
         </ul>
       </motion.div>
     </div>

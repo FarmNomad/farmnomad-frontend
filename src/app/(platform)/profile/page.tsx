@@ -60,7 +60,7 @@ export default function ProfilePage() {
     e.preventDefault();
     if (!me || !f.fullName.trim()) return;
     try {
-      await update({ id: me.id, ...f }).unwrap();
+      await update({ id: me.id, profilePictureUrl: me.profilePictureUrl, ...f }).unwrap();
       toast.success("Profile saved");
     } catch {
       toast.error("Couldn't save your profile");

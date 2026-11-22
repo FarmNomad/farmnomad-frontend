@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/app/AppImage";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { Plus } from "@phosphor-icons/react/dist/ssr";
@@ -21,7 +21,7 @@ const tint: Record<string, string> = {
 export const isSurplus = (p: Product) => !!p.tags?.some((t) => t.toLowerCase() === "surplus");
 
 export function ProductCard({ p, priority }: { p: Product; priority?: boolean }) {
-  const { itemFor, addToCart, setQty } = useCart();
+  const { itemFor, addToCart, setQty, canBuy } = useCart();
   const inCart = itemFor(p.id);
   const out = p.quantityAvailable <= 0;
   const d = p.bestBeforeDate ? daysUntil(p.bestBeforeDate) : null;
@@ -62,7 +62,7 @@ export function ProductCard({ p, priority }: { p: Product; priority?: boolean })
           {d !== null && d <= 3 && !out && <p className="mt-0.5 text-ui-sm text-app-amber">{d <= 0 ? "Best before today" : `Best before in ${d} day${d === 1 ? "" : "s"}`}</p>}
         </div>
         {/* Quick add: the + grows into a stepper once it's in your cart */}
-        {!out && (
+        {!out && canBuy && (
           <div className="shrink-0">
             <AnimatePresence mode="popLayout" initial={false}>
               {inCart ? (

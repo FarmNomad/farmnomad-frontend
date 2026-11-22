@@ -30,107 +30,33 @@ import type { EarningLine, EarningsSummary, PayoutLine } from "@/lib/types/earni
 import type { DriverProfile, Farm, Kitchen, ProfileStatus } from "@/lib/types/profile";
 
 /**
- * Where the data comes from.
- *
- * The Spring Boot API (NEXT_PUBLIC_API_URL) is the source of truth. Routes listed in LIVE_ROUTES
- * go to it. A route that has not been integrated yet still answers from temporary placeholder
- * data (./mock) so its page keeps working; move the route into LIVE_ROUTES when its phase lands,
- * and delete ./mock once nothing is left on it.
+ * Where the data comes from: the Spring Boot API (NEXT_PUBLIC_API_URL), for everything.
+ * There is no sample data. The few routes the backend hasn't built are listed here, and answer
+ * empty or "not available yet" without a request being sent. See also lib/features.ts.
  */
+type Route = [method: string, path: RegExp];
 
-// A route is a method ("*" for any) and a path. Listing the method keeps a phase to exactly what it
-// integrated: the farmer's own products are live, while the marketplace list (GET /products) stays
-// on sample data until the customer side is done.
-const LIVE_ROUTES: [method: string, path: RegExp][] = [
-  // Phase 1: auth and the signed-in user.
-  ["*", /^\/auth\//],
-  ["GET", /^\/users\/me$/],
-  // Phase 2: the farmer's products.
-  ["GET", /^\/products\/my$/],
-  ["POST", /^\/products$/],
-  ["PUT", /^\/products\/\d+$/],
-  ["DELETE", /^\/products\/\d+$/],
-  // Phase 3: orders, and the accounts an admin assigns them to.
-  ["GET", /^\/orders$/],
-  ["GET", /^\/orders\/(my|my\/farmer|assigned|unassigned|\d+)$/],
-  ["POST", /^\/orders\/\d+\/confirm-delivery$/],
-  ["PATCH", /^\/orders\/\d+\/(assign|status)$/],
-  ["GET", /^\/users$/],
-  ["PUT", /^\/users\/\d+$/],
-  // The profile picture.
-  ["POST", /^\/users\/me\/avatar$/],
-  // Phase 4: surplus, donations and the food groups that claim them.
-  ["GET", /^\/surplus(\/my)?$/],
-  ["POST", /^\/surplus$/],
-  ["POST", /^\/surplus\/(claim|assign)\/\d+$/],
-  ["GET", /^\/donations(\/all|\/my\/farmer|\/my\/organisation)?$/],
-  ["POST", /^\/donations$/],
-  ["PATCH", /^\/donations\/\d+\/(claim|claim-and-order)$/],
-  ["GET", /^\/organisations(\/\d+|\/my)?$/],
-  ["POST", /^\/organisations$/],
-  ["PUT", /^\/organisations\/\d+$/],
-  ["PATCH", /^\/organisations\/\d+\/status$/],
-  // Role profiles.
-  ["GET", /^\/profile\/me$/],
-  ["POST", /^\/(farms|drivers\/profile|kitchens)$/],
-  ["PUT", /^\/(farms\/\d+|drivers\/profile|kitchens\/\d+)$/],
-  // Earnings and payouts.
-  ["GET", /^\/earnings(\/transactions|\/payouts)?$/],
-  ["GET", /^\/connect\/status$/],
-  ["POST", /^\/connect\/(onboard|dashboard-link)$/],
+// Lists with no endpoint yet: empty, so nobody sees made-up figures as if they were their own.
+const NO_LIST_YET: Route[] = [
+  ["GET", /^\/analytics\/farmer\/revenue$/],
+  ["GET", /^\/meal-orders\/(my|kitchen)$/],
+  ["GET", /^\/crop-scans$/], // every farmer's scans, for admins (/crop-scans/my does exist)
 ];
-
-// Endpoints whose every request is live, whatever the path. The order endpoints also read the
-// product on each order (GET /products/{id}); that path is otherwise still on placeholder data
-// for the marketplace, so it is switched on here by endpoint rather than by path.
-const LIVE_ENDPOINTS = new Set([
-  "myOrders",
-  "listFarmerOrders",
-  "getOrder",
-  "assignedOrders",
-  "unassignedOrders",
-  "listOrdersAdmin",
-  "orderProduct",
-  // Surplus and donations are completed from their product too.
-  "listMySurplus",
-  "listDonations",
-  "myFarmerDonations",
-  "myOrganisationDonations",
-  "allDonationsAdmin",
-]);
-
-// Lists the backend has no endpoint for yet. These come back empty, so an account never sees
-// made-up figures as if they were its own. Move a route to LIVE_ROUTES (with its
-// real path) once the backend provides it.
-const NO_BACKEND_YET: [method: string, path: RegExp][] = [
-  ["GET", /^\/analytics\/farmer\/revenue$/], // daily revenue for the dashboard chart
+// Actions and readings with no endpoint yet.
+const NOT_BUILT_YET: Route[] = [
+  ["POST", /^\/meal-orders$/],
+  ["PATCH", /^\/meal-orders\/\d+\/status$/],
+  ["POST", /^\/crop-scans\/diagnose$/],
+  ["GET", /^\/weather\//],
 ];
-
-const mockBaseQuery: BaseQueryFn<
-  string | FetchArgs,
-  unknown,
-  FetchBaseQueryError
-> = async (args) => {
-  const { handle } = await import("./mock/handlers");
-  const a = typeof args === "string" ? { url: args } : args;
-  const res = await handle({
-    method: (a.method ?? "GET").toUpperCase(),
-    path: a.url,
-    body: a.body,
-    params: a.params,
-  });
-  return "error" in res
-    ? { error: res.error as FetchBaseQueryError }
-    : { data: res.data };
-};
 
 const baseQuery: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> = (args, baseApi, extra) => {
   const path = (typeof args === "string" ? args : args.url).split("?")[0];
   const method = (typeof args === "string" ? "GET" : (args.method ?? "GET")).toUpperCase();
-  const hit = (routes: [string, RegExp][]) => routes.some(([m, r]) => (m === "*" || m === method) && r.test(path));
-  if (hit(NO_BACKEND_YET)) return { data: [] };
-  const live = hit(LIVE_ROUTES) || LIVE_ENDPOINTS.has(baseApi.endpoint);
-  return live ? liveBaseQuery(args, baseApi, extra) : mockBaseQuery(args, baseApi, extra);
+  const hit = (routes: Route[]) => routes.some(([m, r]) => m === method && r.test(path));
+  if (hit(NO_LIST_YET)) return { data: [] };
+  if (hit(NOT_BUILT_YET)) return { error: { status: 501, data: { message: "This isn't available yet." } } };
+  return liveBaseQuery(args, baseApi, extra);
 };
 
 /**
@@ -267,6 +193,93 @@ const toPayoutLine = (p: ApiPayout): PayoutLine => {
   return { id: p.id, amountPence: p.amountPence, date: p.arrivalDate ?? p.createdAt, status: status === "PAID" ? "PAID" : /^(FAILED|CANCELL?ED)$/.test(status) ? "FAILED" : "PENDING" };
 };
 
+/** A cart line has a name and price; the photo, farm and stock limit come from its product. */
+type ApiCartItem = { id: number; productId: number; productName: string; quantity: number; unitPrice?: number | null };
+async function cartWithProducts(fetch: Fetch) {
+  const res = await fetch("/cart/items");
+  if (res.error) return { error: res.error };
+  const rows = (res.data as ApiCartItem[] | null) ?? [];
+  const products = await productsById(
+    fetch,
+    rows.map((r) => r.productId),
+  );
+  return {
+    data: rows.map((r): CartItem => {
+      const p = products.get(r.productId);
+      const product: Product = {
+        id: r.productId,
+        farmerId: 0,
+        quantityAvailable: 99,
+        ...p,
+        name: r.productName ?? p?.name ?? "Item",
+        // The cart's own price is what the buyer pays, so it wins over the listing's.
+        price: r.unitPrice ?? p?.price ?? 0,
+      };
+      return { id: r.id, productId: r.productId, quantity: r.quantity, product };
+    }),
+  };
+}
+
+// CONFIRM WITH BACKEND: both checkout responses are untyped in the API spec, so accept the likely names.
+type ApiCheckout = { sessionId?: string; id?: string; checkoutUrl?: string; url?: string; sessionUrl?: string } | null;
+const toCheckoutSession = (r: ApiCheckout): CheckoutSession => ({ sessionId: r?.sessionId ?? r?.id ?? "", checkoutUrl: r?.checkoutUrl ?? r?.url ?? r?.sessionUrl ?? "" });
+const NOT_PAID = /^(unpaid|open|pending|failed|expired|cancell?ed)$/i;
+function readConfirmation(data: unknown): { data: Order[] } | { error: FetchBaseQueryError } {
+  if (Array.isArray(data)) return { data: data as Order[] };
+  const body = (data ?? {}) as { paid?: boolean; status?: unknown; paymentStatus?: unknown; payment_status?: unknown; orders?: Order[]; productId?: number };
+  if (Array.isArray(body.orders)) return { data: body.orders };
+  // A single order's own status is PENDING, which says nothing about payment.
+  if (body.productId) return { data: [data as Order] };
+  if (body.paid === false || [body.status, body.paymentStatus, body.payment_status].some((s) => typeof s === "string" && NOT_PAID.test(s)))
+    return { error: { status: 402, data: { message: "That payment hasn't gone through." } } };
+  return { data: [] };
+}
+
+/** The API says preparedBy; the pages say kitchen. */
+type ApiMeal = Omit<Meal, "kitchenId" | "kitchenName"> & { preparedById?: number; preparedByName?: string };
+const toMeal = ({ preparedById, preparedByName, ...m }: ApiMeal): Meal => ({
+  ...m,
+  description: m.description ?? "",
+  cuisine: m.cuisine ?? "",
+  imageUrls: m.imageUrls ?? [],
+  kitchenId: preparedById,
+  kitchenName: preparedByName,
+});
+const toMeals = (rows: ApiMeal[] | null) => (rows ?? []).map(toMeal);
+/** Exactly MealRequest. */
+const mealBody = ({ name, description, price, portionsAvailable, cuisine, imageUrls, available }: MealInput): MealInput => ({ name, description, price, portionsAvailable, cuisine, imageUrls, available });
+
+/** The API's message has sentAt. */
+type ApiMessageRow = Omit<Message, "createdAt"> & { sentAt: string };
+const toMessage = ({ sentAt, ...m }: ApiMessageRow): Message => ({ ...m, createdAt: sentAt });
+
+/**
+ * Who this person can start a conversation with. There is no directory endpoint, so it is the
+ * people on their own orders; an admin sees every account.
+ */
+async function contactsFor(fetch: Fetch) {
+  const res = await fetch("/users/me");
+  if (res.error) return { error: res.error };
+  const me = res.data as User;
+  if (me.role === "ADMIN") {
+    const all = await fetch("/users");
+    if (all.error) return { error: all.error };
+    return { data: ((all.data as User[] | null) ?? []).filter((u) => u.id !== me.id).map((u) => ({ id: u.id, name: u.fullName, role: u.role[0] + u.role.slice(1).toLowerCase() })) };
+  }
+  const list = await fetch(me.role === "DRIVER" ? "/orders/assigned" : me.role === "FARMER" ? "/orders/my/farmer" : "/orders/my");
+  if (list.error) return { error: list.error };
+  const people = new Map<number, { id: number; name: string; role: string }>();
+  const add = (id: number | null | undefined, name: string | null | undefined, role: string) => {
+    if (id && id !== me.id && !people.has(id)) people.set(id, { id, name: name || role, role });
+  };
+  for (const o of (list.data as Order[] | null) ?? []) {
+    add(o.farmerId, o.farmName || o.farmerName, "Farm");
+    add(o.driverId, o.driverName, "Driver");
+    add(o.customerId, o.customerName, "Customer");
+  }
+  return { data: [...people.values()] };
+}
+
 export const api = createApi({
   reducerPath: "api",
   baseQuery,
@@ -301,7 +314,7 @@ export const api = createApi({
     }),
     createProduct: b.mutation<Product, ProductWrite>({
       query: (input) => ({ url: "/products", method: "POST", body: productBody(input) }),
-      invalidatesTags: ["Product"],
+      invalidatesTags: ["Product", "Market"],
     }),
     updateProduct: b.mutation<Product, { id: number } & Partial<ProductWrite>>({
       // FARMER (own) or ADMIN (any).
@@ -317,15 +330,6 @@ export const api = createApi({
       query: (id) => ({ url: `/products/${id}`, method: "DELETE" }),
       invalidatesTags: ["Product", "Market"],
     }),
-    restoreProduct: b.mutation<Product, Product>({
-      query: (body) => ({
-        url: "/__mock/products/restore",
-        method: "POST",
-        body,
-      }),
-      invalidatesTags: ["Product", "Market"],
-    }),
-
     // A farmer's incoming orders.
     listFarmerOrders: b.query<Order[], void>({
       queryFn: (_arg, _api, _extra, fetch) => orderList(fetch, "/orders/my/farmer"),
@@ -347,6 +351,7 @@ export const api = createApi({
 
     myNotifications: b.query<Notification[], void>({
       query: () => "/notifications/my",
+      transformResponse: (rows: Notification[] | null) => [...(rows ?? [])].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)),
       providesTags: ["Notification"],
     }),
     markNotificationRead: b.mutation<Notification, number>({
@@ -398,7 +403,7 @@ export const api = createApi({
     }),
 
     getCart: b.query<CartItem[], void>({
-      query: () => "/cart/items",
+      queryFn: (_arg, _api, _extra, fetch) => cartWithProducts(fetch),
       providesTags: ["Cart"],
     }),
     addToCart: b.mutation<CartItem, { productId: number; quantity: number }>({
@@ -426,25 +431,27 @@ export const api = createApi({
         }
       },
     }),
-    removeCartItem: b.mutation<CartItem, number>({
+    // Both deletes answer with an empty body.
+    removeCartItem: b.mutation<null, number>({
       query: (itemId) => ({ url: `/cart/items/${itemId}`, method: "DELETE" }),
       invalidatesTags: ["Cart"],
     }),
-    clearCart: b.mutation<{ ok: boolean }, void>({
+    clearCart: b.mutation<null, void>({
       query: () => ({ url: "/cart/clear", method: "DELETE" }),
       invalidatesTags: ["Cart"],
     }),
 
     createCheckoutSession: b.mutation<CheckoutSession, void>({
+      // No body: the server builds the session from the cart.
       query: () => ({ url: "/checkout/create-session", method: "POST" }),
+      transformResponse: toCheckoutSession,
     }),
     confirmCheckout: b.mutation<Order[], string>({
-      query: (sessionId) => ({
-        url: "/checkout/confirm",
-        method: "POST",
-        params: { sessionId },
-      }),
-      invalidatesTags: ["Cart", "MyOrders", "Market"],
+      queryFn: async (sessionId, _api, _extra, fetch) => {
+        const res = await fetch({ url: "/checkout/confirm", method: "POST", params: { sessionId } });
+        return res.error ? { error: res.error } : readConfirmation(res.data);
+      },
+      invalidatesTags: ["Cart", "MyOrders", "Market", "Product"],
     }),
 
     // The order list differs by role: /orders/my (customer), /orders/assigned (driver), /orders (admin).
@@ -460,8 +467,7 @@ export const api = createApi({
       },
       providesTags: ["MyOrders", "Jobs", "AdminOrders"],
     }),
-    // The product on an order, read from the real API (the marketplace's own product pages are
-    // still on placeholder data, so they keep using getProduct).
+    // The product on an order. Separate from getProduct so it refreshes with the farmer's edits.
     orderProduct: b.query<Product, number>({
       query: (id) => `/products/${id}`,
       providesTags: ["Product"],
@@ -584,59 +590,56 @@ export const api = createApi({
       transformResponse: toOrganisation,
       invalidatesTags: ["Org", "Orgs"],
     }),
-    mockResetOrganisation: b.mutation<{ ok: boolean }, void>({
-      query: () => ({ url: "/__mock/organisation", method: "DELETE" }),
-      invalidatesTags: ["Org"],
-    }),
-    mockVerifyOrganisation: b.mutation<Organisation, void>({
-      query: () => ({ url: "/__mock/organisation/verify", method: "POST" }),
-      invalidatesTags: ["Org"],
-    }),
-
     // ───────── Messages (spec §3.12). Polls until STOMP lands. ─────────
     myMessages: b.query<Message[], void>({
       query: () => "/messages",
+      transformResponse: (rows: ApiMessageRow[] | null) => (rows ?? []).map(toMessage),
       providesTags: ["Messages"],
     }),
-    sendMessage: b.mutation<
-      Message,
-      { recipientId: number; content: string; recipientName?: string }
-    >({
-      // recipientName is a hint for the mock only; the API takes recipientId and content.
-      query: (body) => ({ url: "/messages", method: "POST", body }),
+    sendMessage: b.mutation<Message, { recipientId: number; content: string }>({
+      query: ({ recipientId, content }) => ({ url: "/messages", method: "POST", body: { recipientId, content } }),
+      transformResponse: toMessage,
       invalidatesTags: ["Messages"],
     }),
     markMessageRead: b.mutation<Message, number>({
       query: (id) => ({ url: `/messages/${id}/read`, method: "PATCH" }),
+      transformResponse: toMessage,
       invalidatesTags: ["Messages"],
     }),
     people: b.query<{ id: number; name: string; role: string }[], void>({
-      query: () => "/__mock/people",
+      queryFn: (_arg, _api, _extra, fetch) => contactsFor(fetch),
+      keepUnusedDataFor: 30,
     }),
 
     // ───────── NomadEat meals (spec §3.4, JSON with already-hosted imageUrls) ─────────
     listMeals: b.query<Meal[], void>({
       query: () => "/meals",
+      transformResponse: toMeals,
       providesTags: ["Meal"],
     }),
     getMeal: b.query<Meal, number>({
       query: (id) => `/meals/${id}`,
+      transformResponse: toMeal,
       providesTags: ["Meal"],
     }),
     myMeals: b.query<Meal[], void>({
       query: () => "/meals/my",
+      transformResponse: toMeals,
       providesTags: ["Meal"],
     }),
     createMeal: b.mutation<Meal, MealInput>({
-      query: (body) => ({ url: "/meals", method: "POST", body }),
+      query: (input) => ({ url: "/meals", method: "POST", body: mealBody(input) }),
+      transformResponse: toMeal,
       invalidatesTags: ["Meal"],
     }),
     updateMeal: b.mutation<Meal, { id: number } & Partial<MealInput>>({
-      query: ({ id, ...body }) => ({
-        url: `/meals/${id}`,
-        method: "PUT",
-        body,
-      }),
+      // PUT replaces the whole meal, so a lone { available } would wipe the rest. Merge first.
+      queryFn: async ({ id, ...patch }, _api, _extra, fetch) => {
+        const current = await fetch(`/meals/${id}`);
+        if (current.error) return { error: current.error };
+        const saved = await fetch({ url: `/meals/${id}`, method: "PUT", body: mealBody({ ...toMeal(current.data as ApiMeal), ...patch }) });
+        return saved.error ? { error: saved.error } : { data: toMeal(saved.data as ApiMeal) };
+      },
       // Optimistic: availability toggles feel instant.
       async onQueryStarted({ id, ...patch }, { dispatch, queryFulfilled }) {
         const undo = dispatch(
@@ -649,7 +652,7 @@ export const api = createApi({
       },
       invalidatesTags: ["Meal"],
     }),
-    deleteMeal: b.mutation<Meal, number>({
+    deleteMeal: b.mutation<null, number>({
       query: (id) => ({ url: `/meals/${id}`, method: "DELETE" }),
       invalidatesTags: ["Meal"],
     }),
@@ -708,16 +711,14 @@ export const api = createApi({
     verifyEmail: b.mutation<ApiMessage, { token: string }>({
       query: (body) => ({ url: "/auth/verify-email", method: "POST", body }),
     }),
+    // No admin list of meals yet, so this is the public one: meals that are on the menu.
     allMealsAdmin: b.query<Meal[], void>({
-      query: () => "/__admin/meals",
+      query: () => "/meals",
+      transformResponse: toMeals,
       providesTags: ["Meal"],
     }),
-    deleteUser: b.mutation<User, number>({
+    deleteUser: b.mutation<null, number>({
       query: (id) => ({ url: `/users/${id}`, method: "DELETE" }),
-      invalidatesTags: ["Users"],
-    }),
-    mockRestoreUser: b.mutation<User, User>({
-      query: (body) => ({ url: "/__mock/users", method: "POST", body }),
       invalidatesTags: ["Users"],
     }),
     listOrdersAdmin: b.query<(Order & { total: number })[], OrderStatus | void>(
@@ -900,7 +901,6 @@ export const {
   useCreateProductMutation,
   useUpdateProductMutation,
   useDeleteProductMutation,
-  useRestoreProductMutation,
   useListFarmerOrdersQuery,
   useListMySurplusQuery,
   useCreateSurplusMutation,
@@ -939,8 +939,6 @@ export const {
   useMyOrganisationQuery,
   useCreateOrganisationMutation,
   useUpdateOrganisationMutation,
-  useMockResetOrganisationMutation,
-  useMockVerifyOrganisationMutation,
   useMyMessagesQuery,
   useSendMessageMutation,
   useMarkMessageReadMutation,
@@ -961,7 +959,6 @@ export const {
   useVerifyEmailMutation,
   useAllMealsAdminQuery,
   useDeleteUserMutation,
-  useMockRestoreUserMutation,
   useListOrdersAdminQuery,
   useAdminAssignOrderMutation,
   useAdminOrderStatusMutation,

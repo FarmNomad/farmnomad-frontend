@@ -857,7 +857,7 @@ function StatusNote({
   title,
   children,
 }: {
-  tone: "busy" | "ok" | "bad";
+  tone: "ask" | "busy" | "ok" | "bad";
   title: string;
   children: ReactNode;
 }) {
@@ -871,6 +871,9 @@ function StatusNote({
             : "bg-app-accent-soft text-app-accent shadow-[inset_0_0_0_1px_var(--a-accent-soft)]",
         )}
       >
+        {tone === "ask" && (
+          <EnvelopeSimple weight="duotone" className="size-7" />
+        )}
         {tone === "busy" && (
           <CircleNotch className="size-7 animate-spin motion-reduce:animate-none" />
         )}
@@ -900,24 +903,59 @@ function VerifyEmail({
       new URLSearchParams(window.location.search).get("token")?.trim() ?? "",
   );
   const [state, setState] = useState<{
-    status: "verifying" | "done" | "failed";
+    status: "ready" | "verifying" | "done" | "failed";
     message?: string;
-  }>({ status: token ? "verifying" : "failed" });
+  }>({ status: token ? "ready" : "failed" });
   const [slow, setSlow] = useState(false);
   const started = useRef(false);
 
-  useEffect(() => {
-    // The token works once, so never send it twice (React runs effects twice in development).
-    if (!token || started.current) return;
+  // Only ever on a tap. Mail scanners open links by themselves, and the token works once, so
+  // verifying on page load let a scanner use it up before the person saw the email.
+  function confirmEmail() {
+    if (started.current) return;
     started.current = true;
+    setState({ status: "verifying" });
     // The server sleeps when idle and can take up to a minute to wake. Say so rather than look stuck.
     const timer = window.setTimeout(() => setSlow(true), 5000);
     verify({ token })
       .unwrap()
       .then((res) => setState({ status: "done", message: res?.message ?? undefined }))
-      .catch((err) => setState({ status: "failed", message: apiMessage(err) }))
-      .finally(() => window.clearTimeout(timer));
-  }, [token, verify]);
+      .catch((err: { status?: number | string }) => {
+        // If it never got an answer the token is unused, so let them tap again.
+        const noAnswer =
+          err?.status === "FETCH_ERROR" ||
+          err?.status === "TIMEOUT_ERROR" ||
+          (typeof err?.status === "number" && err.status >= 500);
+        if (noAnswer) started.current = false;
+        setState({
+          status: noAnswer ? "ready" : "failed",
+          message:
+            apiMessage(err) ??
+            (noAnswer ? "That didn't go through. Try again." : undefined),
+        });
+      })
+      .finally(() => {
+        window.clearTimeout(timer);
+        setSlow(false);
+      });
+  }
+
+  if (state.status === "ready")
+    return (
+      <div aria-live="polite">
+        <StatusNote tone="ask" title="Confirm your email">
+          Tap the button to finish setting up your account.
+        </StatusNote>
+        {state.message && (
+          <p role="alert" className="mt-4 text-center text-ui-sm text-app-red">
+            {state.message}
+          </p>
+        )}
+        <PrimaryButton className="mt-8" onClick={confirmEmail}>
+          Verify my email
+        </PrimaryButton>
+      </div>
+    );
 
   if (state.status === "verifying")
     return (

@@ -10,6 +10,8 @@ import { DiagnosisResult, DiagnosisSkeleton, severityMeta } from "@/components/a
 import { ImageUploadZone, type ScanPhase } from "@/components/app/farm-tools/ImageUploadZone";
 import { Button, Skeleton, relDay } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
+import { FEATURES } from "@/lib/features";
+import { NotAvailableYet } from "@/components/app/states";
 
 const msg = (e: unknown, fallback: string) => (e as { data?: { message?: string } })?.data?.message ?? fallback;
 
@@ -36,6 +38,8 @@ export default function CropScannerPage() {
 
   const run = useCallback(
     async (file: File) => {
+      // Nothing could diagnose it, so don't upload it.
+      if (!FEATURES.cropDiagnosis) return;
       setError(null);
       setCurrent(null);
       setPreview(URL.createObjectURL(file));
@@ -85,7 +89,8 @@ export default function CropScannerPage() {
     <div className="mx-auto max-w-[1100px] pb-16">
       <PageHeader title="Crop scanner" description="Photograph a leaf to check it for disease, and get what to do next." />
       <div className="grid gap-10 px-4 md:px-8">
-        <div className="grid items-start gap-6 md:grid-cols-2 md:gap-8">
+        {!FEATURES.cropDiagnosis && !current && <NotAvailableYet title="Photo diagnosis is coming soon" body="Checking a photo for disease isn't switched on yet. Any scans you already have are listed here." />}
+        <div className={cn("grid items-start gap-6 md:grid-cols-2 md:gap-8", !FEATURES.cropDiagnosis && !current && "hidden")}>
           <ImageUploadZone preview={preview} phase={phase} onFile={run} onReset={reset} />
 
           <div className="md:pt-1" aria-live="polite">

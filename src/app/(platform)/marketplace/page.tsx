@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/app/AppImage";
 import Link from "next/link";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/app/PageHeader";
 import { ProductCard, isSurplus } from "@/components/app/shop/ProductCard";
 import { Button, EmptyState, Kbd, Skeleton } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
+import { LoadError } from "@/components/app/states";
 
 const SORTS = [
   ["recommended", "Recommended"],
@@ -28,7 +29,7 @@ const PRICES = [
 const PER_PAGE = 8;
 
 export default function MarketplacePage() {
-  const { data, isLoading } = useListProductsQuery();
+  const { data, isLoading, isError, refetch } = useListProductsQuery();
   const { data: me } = useMeQuery();
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<string>("All");
@@ -84,7 +85,7 @@ export default function MarketplacePage() {
     <div className="mx-auto max-w-[1240px] pb-16">
       <PageHeader
         title={me ? `What's fresh, ${me.fullName.split(" ")[0]}` : "Marketplace"}
-        description={data ? `${data.length} listings from ${farms} farms across the North West` : "Produce from farms near you"}
+        description={data ? `${data.length} listing${data.length === 1 ? "" : "s"} from ${farms} farm${farms === 1 ? "" : "s"}` : "Produce from farms near you"}
       />
 
       <div className="grid gap-3 px-4 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] md:px-8">
@@ -156,6 +157,10 @@ export default function MarketplacePage() {
               </div>
             ))}
           </div>
+        ) : isError && !data ? (
+          <LoadError what="the marketplace" onRetry={refetch} />
+        ) : !data?.length ? (
+          <EmptyState icon={<Storefront className="size-5" />} title="Nothing listed yet" body="New produce shows up here as soon as a farm lists it." />
         ) : results.length === 0 ? (
           <EmptyState
             icon={<Storefront className="size-5" />}
