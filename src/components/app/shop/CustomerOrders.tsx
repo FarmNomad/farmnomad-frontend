@@ -7,7 +7,7 @@ import { useMemo, useState } from "react";
 import { CaretRight, Receipt } from "@phosphor-icons/react/dist/ssr";
 import { useMyOrdersQuery } from "@/lib/api/farmnomad";
 import { PageHeader } from "@/components/app/PageHeader";
-import { paymentMeta, statusMeta } from "@/components/app/orderMeta";
+import { paymentFor, statusMeta } from "@/components/app/orderMeta";
 import { Button, EmptyState, Pill, Skeleton, orderRef, relDay, time } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
 import { useApp } from "@/components/app/AppState";
@@ -71,7 +71,7 @@ export function CustomerOrders() {
                       </p>
                       <p className="num truncate text-ui-sm text-app-faint">
                         {orderRef(o.id)} · {relDay(o.createdAt)}, {time(o.createdAt)}
-                        {o.paymentStatus !== "PAID" && ` · ${paymentMeta[o.paymentStatus].label}`}
+                        {(o.donationId || o.paymentStatus !== "PAID") && ` · ${paymentFor(o).label}`}
                       </p>
                     </div>
                     <Pill tone={m.tone} dot={false} className="gap-1">

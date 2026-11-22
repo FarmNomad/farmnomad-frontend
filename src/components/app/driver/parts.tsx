@@ -13,6 +13,8 @@ import { statusMeta } from "@/components/app/orderMeta";
 import { DeliveryCodeDialog } from "@/components/app/delivery/DeliveryCode";
 import { Button, Pill, orderRef, relDay, time } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
+import { formatPence } from "@/lib/types/earnings";
+import { useJobMiles } from "@/lib/hooks/useJobMiles";
 
 const err = (e: unknown) => (e as { data?: { message?: string } })?.data?.message ?? "That didn't work. Try again.";
 
@@ -78,6 +80,34 @@ export function useJobActions() {
   return { advance, codeDialog, busy: a.isLoading || s.isLoading };
 }
 
+/** What a job pays and roughly how far it is, so a driver can judge it before accepting. */
+export function JobTerms({ o, size = "sm" }: { o: Order; size?: "sm" | "lg" }) {
+  const miles = useJobMiles(o.pickupAddress, o.deliveryAddress);
+  const fee = o.deliveryFeePence;
+  const pay = fee == null ? "Pay not set" : fee > 0 ? formatPence(fee) : "No delivery fee";
+  const distance = miles === undefined ? "Working out distance…" : miles === null ? "Distance unavailable" : miles < 1 ? "Under 1 mile" : `About ${miles.toFixed(1)} miles`;
+
+  if (size === "sm")
+    return (
+      <p className="mt-1 flex flex-wrap items-baseline gap-x-2 text-ui-sm">
+        <span className={cn(fee ? "num text-app-text" : "text-app-faint")}>{pay}</span>
+        <span className="text-app-faint">{distance}</span>
+      </p>
+    );
+  return (
+    <dl className="flex flex-wrap gap-x-8 gap-y-3">
+      <div>
+        <dt className="text-ui-sm text-app-faint">{o.status === "DELIVERED" ? "Job paid" : "You earn"}</dt>
+        <dd className={cn("mt-0.5 font-display text-[20px] font-medium tracking-[-0.02em]", fee ? "num text-app-text" : "text-app-muted")}>{pay}</dd>
+      </div>
+      <div>
+        <dt className="text-ui-sm text-app-faint">Farm to drop-off</dt>
+        <dd className={cn("mt-0.5 font-display text-[20px] font-medium tracking-[-0.02em]", miles == null ? "text-app-muted" : "text-app-text")}>{distance}</dd>
+      </div>
+    </dl>
+  );
+}
+
 /** Pickup → drop-off, drawn as a short vertical route. */
 export function Route({ o, compact }: { o: Order; compact?: boolean }) {
   const collected = o.status === "IN_TRANSIT" || o.status === "DELIVERED";
@@ -141,6 +171,7 @@ export function JobRow({ o }: { o: Order }) {
           <p className="num mt-0.5 text-ui-sm text-app-faint">
             {orderRef(o.id)} · {relDay(o.updatedAt ?? o.createdAt)}, {time(o.updatedAt ?? o.createdAt)}
           </p>
+          <JobTerms o={o} />
         </div>
       </div>
       <div className="relative flex items-center gap-2 sm:justify-end">

@@ -1,5 +1,6 @@
 import type { CropScan, ScanSeverity, UploadResult } from "@/lib/types/api";
-import { api, asList, readAs } from "./farmnomad";
+import { shrinkImage } from "@/lib/images/shrink";
+import { UPLOAD_TIMEOUT_MS, api, asList, readAs } from "./farmnomad";
 
 type ApiScan = Omit<CropScan, "createdAt" | "severity"> & { scannedAt?: string; createdAt?: string; severity?: string | null };
 const SEVERITIES: ScanSeverity[] = ["NONE", "LOW", "MODERATE", "HIGH"];
@@ -32,10 +33,11 @@ const readScans = (data: unknown) => asList<ApiScan>(data)?.map(toScan) ?? null;
 const cropScanApi = api.enhanceEndpoints({ addTagTypes: ["CropScan"] }).injectEndpoints({
   endpoints: (b) => ({
     uploadImage: b.mutation<UploadResult, File>({
-      query: (file) => {
+      queryFn: async (file, _api, _extra, fetch) => {
         const body = new FormData();
-        body.append("file", file);
-        return { url: "/uploads", method: "POST", body };
+        body.append("file", await shrinkImage(file));
+        const res = await fetch({ url: "/uploads", method: "POST", body, timeout: UPLOAD_TIMEOUT_MS });
+        return res.error ? { error: res.error } : { data: res.data as UploadResult };
       },
     }),
     diagnose: b.mutation<CropScan, { imageUrl: string }>({

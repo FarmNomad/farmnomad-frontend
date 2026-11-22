@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, ChatsCircle, CheckCircle, HandTap, MapTrifold, Package } from "@phosphor-icons/react/dist/ssr";
 import { useGetOrderQuery, useOrderProductQuery } from "@/lib/api/farmnomad";
-import { DonationTag, MapsLink, Route, nextStep, useJobActions } from "@/components/app/driver/parts";
+import { DonationTag, JobTerms, MapsLink, Route, nextStep, useJobActions } from "@/components/app/driver/parts";
 import { ORDER_FLOW, statusMeta } from "@/components/app/orderMeta";
 import { Button, EmptyState, Pill, Skeleton, orderRef, relDay, time } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
@@ -73,6 +73,10 @@ export default function JobPage() {
           </li>
         ))}
       </ol>
+
+      <section className="mt-6 rounded-2xl p-5 shadow-[0_0_0_1px_var(--a-line)]" aria-label="Pay and distance">
+        <JobTerms o={o} size="lg" />
+      </section>
 
       {/* Route */}
       <section className="mt-6 rounded-2xl p-5 shadow-[0_0_0_1px_var(--a-line)]" aria-label="Route">

@@ -20,7 +20,9 @@ export interface EarningsSummary {
 
 export interface EarningLine {
   id: number;
-  orderId: number;
+  /** Null for a NomadEat sale, which has mealOrderId instead. */
+  orderId: number | null;
+  mealOrderId?: number | null;
   type: EarningType;
   label: string; // product or meal name, or a delivery summary
   date: string; // ISO

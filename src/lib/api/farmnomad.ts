@@ -4,6 +4,7 @@ import {
   type FetchBaseQueryError,
 } from "@reduxjs/toolkit/query/react";
 import { liveBaseQuery } from "./liveBaseQuery";
+import { shrinkImage, shrinkImages } from "@/lib/images/shrink";
 import type {
   ApiMessage,
   AuthTokens,
@@ -60,6 +61,15 @@ function productBody({ coverImage, images, removeImageUrls, ...fields }: Partial
   return fd;
 }
 
+/** Uploads outlast other requests: a slow connection, a waking server, then the image host. */
+export const UPLOAD_TIMEOUT_MS = 180_000;
+/** The product as form data, with the new photos made small enough to send. */
+async function productUpload({ coverImage, images, ...rest }: Partial<ProductWrite>) {
+  const hasPhotos = !!(coverImage || images?.length);
+  const body = productBody({ ...rest, coverImage: coverImage && (await shrinkImage(coverImage)), images: images && (await shrinkImages(images)) });
+  return hasPhotos ? { body, timeout: UPLOAD_TIMEOUT_MS } : { body };
+}
+
 export type Fetch = (arg: string | FetchArgs) => PromiseLike<{ data?: unknown; error?: FetchBaseQueryError }> | { data?: unknown; error?: FetchBaseQueryError };
 
 /**
@@ -77,6 +87,8 @@ async function completeOrders(fetch: Fetch, orders: Order[]): Promise<Order[]> {
     const unitPrice = o.unitPrice ?? product?.price;
     return {
       ...o,
+      // A refund only sets refundedAt. Read here, so no screen shows or counts it as paid.
+      paymentStatus: o.refundedAt ? "REFUNDED" : o.paymentStatus,
       farmerName: o.farmName ?? o.farmerName ?? product?.farmerName,
       pickupAddress: o.pickupAddress ?? product?.pickupAddress,
       unitPrice,
@@ -161,7 +173,7 @@ type ApiEarning = Omit<EarningLine, "label" | "date"> & { productName?: string |
 const toEarningLine = ({ productName, createdAt, ...e }: ApiEarning): EarningLine => ({
   ...e,
   date: createdAt,
-  label: productName || (e.type === "DELIVERY_FEE" ? "Delivery" : "Sale"),
+  label: productName || (e.type === "DELIVERY_FEE" ? "Delivery" : e.mealOrderId ? "NomadEat meal" : "Sale"),
 });
 type ApiPayout = { id: string; amountPence: number; status?: string | null; arrivalDate?: string | null; createdAt: string };
 const toPayoutLine = (p: ApiPayout): PayoutLine => {
@@ -288,16 +300,18 @@ export const api = createApi({
       providesTags: ["Product"],
     }),
     createProduct: b.mutation<Product, ProductWrite>({
-      query: (input) => ({ url: "/products", method: "POST", body: productBody(input) }),
+      queryFn: async (input, _api, _extra, fetch) => {
+        const res = await fetch({ url: "/products", method: "POST", ...(await productUpload(input)) });
+        return res.error ? { error: res.error } : { data: res.data as Product };
+      },
       invalidatesTags: ["Product", "Market"],
     }),
     updateProduct: b.mutation<Product, { id: number } & Partial<ProductWrite>>({
       // FARMER (own) or ADMIN (any).
-      query: ({ id, ...input }) => ({
-        url: `/products/${id}`,
-        method: "PUT",
-        body: productBody(input),
-      }),
+      queryFn: async ({ id, ...input }, _api, _extra, fetch) => {
+        const res = await fetch({ url: `/products/${id}`, method: "PUT", ...(await productUpload(input)) });
+        return res.error ? { error: res.error } : { data: res.data as Product };
+      },
       invalidatesTags: ["Product", "Market"],
     }),
     // The real API answers with an empty body.
@@ -467,6 +481,13 @@ export const api = createApi({
     confirmDelivery: b.mutation<Order, { id: number; code: string }>({
       query: ({ id, code }) => ({ url: `/orders/${id}/confirm-delivery`, method: "POST", body: { code } }),
       invalidatesTags: ["Jobs", "Order", "MyOrders", "AdminOrders", "Donation", "Notification", "Earnings"],
+    }),
+    // ADMIN. Refunds the order through Stripe and cancels it if undelivered. Cancelling alone moves
+    // no money. Repeating it never refunds twice.
+    refundOrder: b.mutation<Order, number>({
+      query: (id) => ({ url: `/admin/orders/${id}/refund`, method: "POST" }),
+      // After a failure too: a timeout can hide a refund that went through.
+      invalidatesTags: ["AdminOrders", "Jobs", "Order", "MyOrders", "Notification", "Earnings", "Product"],
     }),
     updateOrderStatus: b.mutation<Order, { id: number; status: OrderStatus }>({
       query: ({ id, status }) => ({
@@ -770,10 +791,11 @@ export const api = createApi({
 
     // ───────── Profile picture (multipart; the file field must be named exactly "file") ─────────
     uploadAvatar: b.mutation<User, File>({
-      query: (file) => {
+      queryFn: async (file, _api, _extra, fetch) => {
         const body = new FormData();
-        body.append("file", file);
-        return { url: "/users/me/avatar", method: "POST", body };
+        body.append("file", await shrinkImage(file));
+        const res = await fetch({ url: "/users/me/avatar", method: "POST", body, timeout: UPLOAD_TIMEOUT_MS });
+        return res.error ? { error: res.error } : { data: res.data as User };
       },
       invalidatesTags: ["Me", "Users"],
     }),
@@ -913,6 +935,7 @@ export const {
   useUnassignedOrdersQuery,
   useAssignOrderMutation,
   useUpdateOrderStatusMutation,
+  useRefundOrderMutation,
   useConfirmDeliveryMutation,
   useListDonationsQuery,
   useMyFarmerDonationsQuery,

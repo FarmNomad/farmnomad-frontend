@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/app/PageHeader";
 import { useApp } from "@/components/app/AppState";
 import { CustomerOrders } from "@/components/app/shop/CustomerOrders";
 import { Sheet } from "@/components/app/Sheet";
-import { ORDER_FLOW, paymentMeta, statusMeta } from "@/components/app/orderMeta";
+import { ORDER_FLOW, paymentFor, statusMeta } from "@/components/app/orderMeta";
 import { Avatar, EmptyState, Pill, Skeleton, gbp, orderRef, relDay, time } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
 
@@ -96,7 +96,7 @@ function FarmerOrders() {
 
 function Row({ o, onOpen, active }: { o: Order; onOpen: () => void; active: boolean }) {
   const m = statusMeta[o.status];
-  const pay = paymentMeta[o.paymentStatus];
+  const pay = paymentFor(o);
   return (
     <li className="border-b border-app-line">
       <button onClick={onOpen} className={cn("flex h-11 w-full items-center gap-3 px-4 text-left transition-colors hover:bg-app-hover md:px-8", active && "bg-app-active")}>
@@ -107,7 +107,7 @@ function Row({ o, onOpen, active }: { o: Order; onOpen: () => void; active: bool
           <span className="num text-app-faint"> × {o.quantity}</span>
         </span>
         <span className="hidden w-44 truncate text-app-muted lg:block">{o.customerName}</span>
-        <span className="hidden w-20 sm:block">
+        <span className="hidden w-24 shrink-0 sm:block">
           <Pill tone={pay.tone}>{pay.label}</Pill>
         </span>
         <span className="hidden w-32 items-center gap-2 truncate text-app-muted md:flex">
@@ -154,16 +154,16 @@ function OrderDetail({ order, onClose }: { order: Order | null; onClose: () => v
             <div className="min-w-0 flex-1">
               <p className="font-medium">{o.productName}</p>
               <p className="num text-app-muted">
-                {o.quantity} × {p ? gbp(p.price) : "–"}
+                {o.donationId ? `${o.quantity} donated` : `${o.quantity} × ${p ? gbp(p.price) : "–"}`}
               </p>
             </div>
-            {p && <p className="num font-display text-[20px] font-medium tracking-[-0.02em]">{gbp(p.price * o.quantity)}</p>}
+            {p && !o.donationId && <p className="num font-display text-[20px] font-medium tracking-[-0.02em]">{gbp(p.price * o.quantity)}</p>}
           </div>
 
           <div>
             <p className="mb-3 font-medium">Progress</p>
             {o.status === "CANCELLED" ? (
-              <Pill tone="neutral">Cancelled · {paymentMeta[o.paymentStatus].label}</Pill>
+              <Pill tone="neutral">Cancelled · {paymentFor(o).label}</Pill>
             ) : (
               <ol className="grid gap-0">
                 {ORDER_FLOW.map((s, i) => {
@@ -189,7 +189,7 @@ function OrderDetail({ order, onClose }: { order: Order | null; onClose: () => v
           <dl className="grid gap-3 rounded-xl p-4 shadow-[0_0_0_1px_var(--a-line)]">
             <Detail icon={<UserIcon className="size-4" />} label="Customer" value={o.customerName} />
             <Detail icon={<MapPin className="size-4" />} label="Driver" value={o.driverName ?? "Not assigned yet"} muted={!o.driverName} />
-            <Detail icon={<Receipt className="size-4" />} label="Payment" value={<Pill tone={paymentMeta[o.paymentStatus].tone}>{paymentMeta[o.paymentStatus].label}</Pill>} />
+            <Detail icon={<Receipt className="size-4" />} label="Payment" value={<Pill tone={paymentFor(o).tone}>{paymentFor(o).label}</Pill>} />
           </dl>
         </div>
       )}
