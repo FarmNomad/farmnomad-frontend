@@ -4,7 +4,7 @@ export const FEATURES = {
    * Ordering on NomadEat. Keep false until POST /meal-orders returns a Stripe checkoutUrl and
    * orders carry paymentStatus: the card is held at order and charged when cooking starts.
    */
-  mealOrders: true,
+  mealOrders: false,
   /** Dietary tags on meals. */
   mealExtras: true,
   /** POST /crop-scans/diagnose. */

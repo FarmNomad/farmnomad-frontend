@@ -22,7 +22,7 @@ export default function MealOrdersPage() {
       <PageHeader title="Meal orders" description="Move each order along as you cook. Diners are told when it's ready." />
       <div className="grid gap-6 px-4 md:px-8">
         {isLoading ? (
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 lg:grid-cols-3">
             {[0, 1, 2].map((i) => (
               <Skeleton key={i} className="h-56 rounded-xl" />
             ))}
@@ -34,7 +34,7 @@ export default function MealOrdersPage() {
             <EmptyState icon={<CookingPot className="size-5" />} title="No orders yet" body="When a diner orders from your menu on NomadEat, it lands here." />
           </div>
         ) : (
-          <div className="grid items-start gap-3 md:grid-cols-3">
+          <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-3 lg:grid-cols-3">
             {LANES.map((s) => {
               const items = data.filter((o) => o.status === s);
               const m = mealOrderMeta[s];

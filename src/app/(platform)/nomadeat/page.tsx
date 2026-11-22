@@ -37,17 +37,18 @@ export default function NomadEatPage() {
   return (
     <div className="mx-auto max-w-[1200px] pb-16">
       <PageHeader title="NomadEat" description="Ready meals from kitchens near you, cooked with produce from local farms." />
-      <div className="grid gap-5 px-4 md:px-8">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-5 px-4 md:px-8">
         <PaymentReturn />
         {mineFailed && !mine && <p role="alert" className="text-ui-sm text-app-muted">We couldn&apos;t load your meal orders. Refresh to try again.</p>}
         {active.length > 0 && (
-          <ul className="grid gap-2 sm:grid-cols-2" aria-label="Your meal orders">
+          <ul className="grid grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-2" aria-label="Your meal orders">
             {active.map((o) => {
               const m = mealOrderMeta[o.status];
-              const unpaid = o.paymentStatus === "AWAITING_PAYMENT";
+              // A new order without a hold hasn't reached the kitchen as one to cook.
+              const unpaid = o.status === "NEW" && o.paymentStatus !== "HELD";
               const payment = o.paymentStatus === "HELD" ? `${gbp(o.total)} held` : o.paymentStatus === "CAPTURED" ? `${gbp(o.total)} paid` : null;
               return (
-                <li key={o.id} className="flex items-center gap-3 rounded-xl bg-app-panel p-3.5 shadow-[0_0_0_1px_var(--a-line)]">
+                <li key={o.id} className="flex min-w-0 items-center gap-3 rounded-xl bg-app-panel p-3.5 shadow-[0_0_0_1px_var(--a-line)]">
                   <span className={cn("grid size-9 shrink-0 place-items-center rounded-lg", o.status === "READY" ? "bg-app-accent-soft text-app-accent" : "bg-app-hover text-app-muted")}>
                     <m.icon weight="fill" className="size-4" />
                   </span>
@@ -57,7 +58,7 @@ export default function NomadEatPage() {
                     </span>
                     <span className="block truncate text-ui-sm text-app-faint">{[payment, o.kitchenName].filter(Boolean).join(" · ")}</span>
                   </span>
-                  <Pill tone={unpaid ? "neutral" : m.tone}>{unpaid ? "Awaiting payment" : m.customer}</Pill>
+                  <Pill tone={unpaid ? "neutral" : m.tone}>{!unpaid ? m.customer : o.paymentStatus === "AWAITING_PAYMENT" ? "Awaiting payment" : "Not paid"}</Pill>
                 </li>
               );
             })}

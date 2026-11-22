@@ -247,15 +247,18 @@ stripe webhook_endpoints update we_REPLACE_ME -d "enabled_events[]=checkout.sess
 
 B and C don't change.
 
-## 6. Frontend
+## 6. Frontend (built, switched off)
 
-- Order button: "Continue to payment", then go to `checkoutUrl`. Refuse a response without one.
-- Replace "Pay on collection" with "Your card is held now and charged when the kitchen starts cooking."
-- `/nomadeat?ordered=ID`: show "Confirming your payment" until that order is HELD.
-- `/nomadeat/{mealId}?payment=cancelled`: say that nothing was charged.
-- Start cooking shows the API's 402 message.
-- Decline says the diner isn't charged.
-- `FEATURES.mealOrders` stays false until sections 1 to 5 are deployed.
+The app already does its half, and relies on exactly this from the backend:
+
+- `POST /meal-orders` returns `{ orderId, checkoutUrl }`. Without a link it says nothing was charged.
+- Stripe returns to `/nomadeat?ordered=ID` or `/nomadeat/MEAL_ID?payment=cancelled`.
+- Every meal order has `paymentStatus`, spelt as in the table above. A NEW order without `HELD` can't be
+  started: the kitchen is told not to cook it, and it isn't counted as work or sales.
+- The kitchen's "Taken today" counts only `CAPTURED`.
+- A failed capture shows the API's `message` under "Don't start cooking".
+
+When sections 1 to 5 are deployed, set `FEATURES.mealOrders` to true in `src/lib/features.ts`.
 
 ## 7. Test in the sandbox
 

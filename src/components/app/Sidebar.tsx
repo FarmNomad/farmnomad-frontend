@@ -188,7 +188,7 @@ export function useCounts(role: MockRole): Record<string, number | undefined> {
     };
   if (kitchen)
     return {
-      "/meals/orders": mealOrders?.filter((o) => o.status === "NEW").length,
+      "/meals/orders": mealOrders?.filter((o) => o.status === "NEW" && o.paymentStatus === "HELD").length,
       "/meals": menu?.filter((m) => m.available && m.portionsAvailable <= 3).length,
       "/cart": cart?.reduce((s, i) => s + i.quantity, 0),
       "/messages": unread,
