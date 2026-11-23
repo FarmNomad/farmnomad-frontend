@@ -39,6 +39,8 @@ export default function OrderDetailPage() {
 
   const m = statusMeta[o.status];
   const step = ORDER_FLOW.indexOf(o.status);
+  // Buyers can talk to the farm about their order. A farmer viewing their own sale needs no link to themselves.
+  const farmId = me && (o.farmerId ?? p?.farmerId) !== me.id ? (o.farmerId ?? p?.farmerId) : undefined;
 
   return (
     <div className="mx-auto max-w-[760px] px-4 pb-16 md:px-8">
@@ -113,6 +115,21 @@ export default function OrderDetailPage() {
             <p className="mt-2 text-app-muted">{o.status === "CANCELLED" ? "Not needed" : "We'll assign one once the farm has packed your order."}</p>
           )}
         </section>
+        {farmId && (
+          <section className="rounded-xl p-4 shadow-[0_0_0_1px_var(--a-line)]" aria-label="Farm">
+            <p className="text-ui-sm text-app-faint">From</p>
+            <div className="mt-2 flex items-center gap-3">
+              <Avatar name={o.farmerName ?? "Farm"} className="size-9 text-[12px]" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium">{o.farmerName ?? "The farm"}</p>
+                <p className="text-ui-sm text-app-faint">Questions about the produce</p>
+              </div>
+              <Link href={`/messages?to=${farmId}&name=${encodeURIComponent(o.farmerName ?? "")}`} aria-label={`Message ${o.farmerName ?? "the farm"}`} className="grid size-8 place-items-center rounded-full text-app-muted shadow-[0_0_0_1px_var(--a-line-strong)] transition-colors hover:bg-app-hover hover:text-app-text">
+                <ChatsCircle className="size-4" />
+              </Link>
+            </div>
+          </section>
+        )}
         <section className="rounded-xl p-4 shadow-[0_0_0_1px_var(--a-line)]" aria-label="Delivery address">
           <p className="text-ui-sm text-app-faint">Delivering to</p>
           <p className="mt-2 flex items-start gap-2">

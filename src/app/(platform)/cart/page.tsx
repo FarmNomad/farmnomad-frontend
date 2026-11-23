@@ -14,6 +14,7 @@ import { useCart } from "@/components/app/shop/useCart";
 import { Button, EmptyState, Skeleton, gbp } from "@/components/app/ui";
 import { LoadError } from "@/components/app/states";
 import { apiError } from "@/lib/api/errors";
+import { DeliveryRows, useDeliveryQuote } from "@/components/app/shop/DeliverySummary";
 
 export default function CartPage() {
   const router = useRouter();
@@ -23,7 +24,7 @@ export default function CartPage() {
   const [readd] = useAddToCartMutation();
   const [clear] = useClearCartMutation();
 
-  const subtotal = items?.reduce((s, i) => s + (i.product?.price ?? 0) * i.quantity, 0) ?? 0;
+  const delivery = useDeliveryQuote(items);
   const count = items?.reduce((s, i) => s + i.quantity, 0) ?? 0;
   const farms = new Set(items?.map((i) => i.product?.farmerName)).size;
 
@@ -115,17 +116,10 @@ export default function CartPage() {
           <aside className="rounded-xl p-5 shadow-[0_0_0_1px_var(--a-line)] lg:sticky lg:top-6" aria-label="Order summary">
             <h2 className="font-medium">Summary</h2>
             <dl className="mt-4 grid gap-2.5">
-              <div className="flex justify-between">
-                <dt className="text-app-muted">Subtotal</dt>
-                <dd className="num">{gbp(subtotal)}</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-app-muted">Delivery</dt>
-                <dd className="text-app-muted">Worked out at checkout</dd>
-              </div>
+              <DeliveryRows d={delivery} />
               <div className="mt-2 flex justify-between border-t border-app-line pt-3 text-[15px]">
-                <dt className="font-medium">Total so far</dt>
-                <dd className="num font-display text-[20px] font-medium tracking-[-0.02em]">{gbp(subtotal)}</dd>
+                <dt className="font-medium">{delivery.total !== null ? "Total" : "Total before delivery"}</dt>
+                <dd className="num font-display text-[20px] font-medium tracking-[-0.02em]">{gbp(delivery.total ?? delivery.subtotal)}</dd>
               </div>
             </dl>
             <Button variant="primary" className="mt-5 h-10 w-full" onClick={() => router.push("/checkout")}>

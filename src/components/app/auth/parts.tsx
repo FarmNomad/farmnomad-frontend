@@ -45,7 +45,7 @@ export const AuthInput = forwardRef<HTMLInputElement, InputProps>(function AuthI
   const auto = useId();
   const fid = id ?? auto;
   return (
-    <div className={cn("grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5", className)}>
+    <div className={cn("grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-1.5", className)}>
       <div className="flex items-baseline justify-between">
         <label htmlFor={fid} className="text-[13px] font-medium text-app-muted">
           {label}

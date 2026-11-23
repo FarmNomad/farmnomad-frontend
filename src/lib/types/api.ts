@@ -180,6 +180,18 @@ export function daysUntil(iso: string, now = new Date()) {
   return Math.round((b - a) / 86_400_000);
 }
 
+/**
+ * GET /checkout/quote: what checkout will charge, worked out by the server from the cart and the
+ * saved address. All money in pence.
+ */
+export interface CheckoutQuote {
+  subtotalPence: number;
+  deliveryPence: number;
+  totalPence: number;
+  miles?: number | null;
+  /** One per farm, when the cart spans several. */
+  groups?: { farmerId: number; farmName?: string | null; fulfilment?: string | null; miles?: number | null; subtotalPence?: number; deliveryFeePence?: number | null; deliverable?: boolean; reason?: string | null }[];
+}
 export interface CartItem {
   id: number;
   productId: number;

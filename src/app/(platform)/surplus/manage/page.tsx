@@ -69,7 +69,8 @@ export default function SurplusManagePage() {
                 const p = products?.find((x) => x.id === s.productId);
                 const q = s.quantity ?? 0;
                 const left = s.availableQuantity ?? 0;
-                const status = left === 0 ? { label: DEALS ? "Sold out" : "Fully claimed", tone: "green" as const } : left < q ? { label: DEALS ? "Selling" : "Partly claimed", tone: "blue" as const } : { label: DEALS ? "On sale" : "Waiting for a claim", tone: "amber" as const };
+                const ended = DEALS && !!s.endsAt && s.endsAt < new Date().toISOString().slice(0, 10);
+                const status = ended ? { label: "Ended", tone: "neutral" as const } : left === 0 ? { label: DEALS ? "Sold out" : "Fully claimed", tone: "green" as const } : left < q ? { label: DEALS ? "Selling" : "Partly claimed", tone: "blue" as const } : { label: DEALS ? "On sale" : "Waiting for a claim", tone: "amber" as const };
                 return (
                   <li key={s.id} className="flex items-center gap-4 border-b border-app-line px-5 py-3.5 last:border-0">
                     <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-app-hover">

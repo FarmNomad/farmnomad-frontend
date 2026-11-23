@@ -9,6 +9,7 @@ import type {
   ApiMessage,
   AuthTokens,
   CartItem,
+  CheckoutQuote,
   CheckoutSession,
   Donation,
   Meal,
@@ -446,6 +447,18 @@ export const api = createApi({
       // No body: the server builds the session from the cart.
       query: () => ({ url: "/checkout/create-session", method: "POST" }),
       transformResponse: toCheckoutSession,
+    }),
+    // null while the backend has no quote endpoint (404): checkout then says delivery isn't priced.
+    getCheckoutQuote: b.query<CheckoutQuote | null, void>({
+      queryFn: async (_arg, _api, _extra, fetch) => {
+        const res = await fetch("/checkout/quote");
+        if (res.error) return res.error.status === 404 || res.error.status === 405 ? { data: null } : { error: res.error };
+        const q = res.data as CheckoutQuote | null;
+        const ok = q && [q.subtotalPence, q.deliveryPence, q.totalPence].every(Number.isFinite);
+        return ok ? { data: q } : { error: { status: "CUSTOM_ERROR", error: "Unreadable quote", data: { message: "The delivery quote couldn't be read." } } };
+      },
+      // A new cart or a new address means a new quote.
+      providesTags: ["Cart", "Me"],
     }),
     confirmCheckout: b.mutation<Order[], string>({
       queryFn: async (sessionId, _api, _extra, fetch) => {
@@ -941,6 +954,7 @@ export const {
   useRemoveCartItemMutation,
   useClearCartMutation,
   useCreateCheckoutSessionMutation,
+  useGetCheckoutQuoteQuery,
   useConfirmCheckoutMutation,
   useMyOrdersQuery,
   useGetOrderQuery,

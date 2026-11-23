@@ -3,7 +3,8 @@
 import Image from "@/components/app/AppImage";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
-import { CaretDown, MapPin, Receipt, User as UserIcon } from "@phosphor-icons/react/dist/ssr";
+import Link from "next/link";
+import { CaretDown, ChatsCircle, MapPin, Receipt, User as UserIcon } from "@phosphor-icons/react/dist/ssr";
 import { useListFarmerOrdersQuery, useListMyProductsQuery } from "@/lib/api/farmnomad";
 import type { Order, OrderStatus } from "@/lib/types/api";
 import { PageHeader } from "@/components/app/PageHeader";
@@ -187,7 +188,18 @@ function OrderDetail({ order, onClose }: { order: Order | null; onClose: () => v
           </div>
 
           <dl className="grid gap-3 rounded-xl p-4 shadow-[0_0_0_1px_var(--a-line)]">
-            <Detail icon={<UserIcon className="size-4" />} label="Customer" value={o.customerName} />
+            <Detail
+              icon={<UserIcon className="size-4" />}
+              label="Customer"
+              value={
+                <span className="flex items-center gap-2">
+                  <span className="truncate">{o.customerName}</span>
+                  <Link href={`/messages?to=${o.customerId}&name=${encodeURIComponent(o.customerName)}`} className="inline-flex shrink-0 items-center gap-1 text-ui-sm font-medium text-app-accent hover:underline">
+                    <ChatsCircle className="size-3.5" /> Message
+                  </Link>
+                </span>
+              }
+            />
             <Detail icon={<MapPin className="size-4" />} label="Driver" value={o.driverName ?? "Not assigned yet"} muted={!o.driverName} />
             <Detail icon={<Receipt className="size-4" />} label="Payment" value={<Pill tone={paymentFor(o).tone}>{paymentFor(o).label}</Pill>} />
           </dl>
