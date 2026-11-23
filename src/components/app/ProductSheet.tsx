@@ -267,7 +267,8 @@ export const input = (invalid: boolean) =>
 
 export function Field({ label, required, hint, note, error, children }: { label: string; required?: boolean; hint?: string; note?: ReactNode; error?: string; children: ReactNode }) {
   return (
-    <label className="grid gap-1.5">
+    // content-start: beside a taller field with an error, this one keeps its input at the top.
+    <label className="grid content-start gap-1.5">
       <span className="font-medium">
         {label}
         {required && <span className="text-app-faint"> *</span>}

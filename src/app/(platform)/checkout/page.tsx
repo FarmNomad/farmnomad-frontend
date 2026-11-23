@@ -11,6 +11,7 @@ import { Field, input } from "@/components/app/ProductSheet";
 import { Button, Skeleton, gbp } from "@/components/app/ui";
 import { cn } from "@/lib/cn";
 import { LoadError } from "@/components/app/states";
+import { DeliveryRows, useDeliveryQuote } from "@/components/app/shop/DeliverySummary";
 
 /**
  * Review before paying. The real flow (spec §7.8) calls POST /checkout/create-session and sends the
@@ -32,7 +33,7 @@ export default function CheckoutPage() {
     if (items && !items.length) router.replace("/cart");
   }, [items, router]);
 
-  const subtotal = items?.reduce((s, i) => s + (i.product?.price ?? 0) * i.quantity, 0) ?? 0;
+  const delivery = useDeliveryQuote(items);
   const missing = !addr.address.trim() || !addr.postcode.trim();
 
   async function saveAddress() {
@@ -51,6 +52,7 @@ export default function CheckoutPage() {
       setEditing(true);
       return;
     }
+    if (delivery.blocked.length) return;
     try {
       const { checkoutUrl } = await createSession().unwrap();
       // Only ever follow a web address.
@@ -149,18 +151,18 @@ export default function CheckoutPage() {
 
         <aside className="rounded-xl p-5 shadow-[0_0_0_1px_var(--a-line)] lg:sticky lg:top-6" aria-label="Payment">
           <dl className="grid gap-2.5">
-            <div className="flex justify-between">
-              <dt className="text-app-muted">Subtotal</dt>
-              <dd className="num">{gbp(subtotal)}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-app-muted">Delivery</dt>
-              <dd className="text-app-muted">Shown on the payment page</dd>
-            </div>
+            <DeliveryRows d={delivery} />
+            {delivery.total !== null && (
+              <div className="mt-1 flex justify-between border-t border-app-line pt-3 text-[15px]">
+                <dt className="font-medium">Total</dt>
+                <dd className="num font-display text-[20px] font-medium tracking-[-0.02em]">{gbp(delivery.total)}</dd>
+              </div>
+            )}
           </dl>
-          <Button variant="primary" className="mt-5 h-11 w-full text-[14px]" onClick={pay} disabled={paying || editing || !me || !items?.length}>
-            <Lock weight="fill" className="size-4" /> {paying ? "Opening secure payment" : `Pay ${gbp(subtotal)}`}
+          <Button variant="primary" className="mt-5 h-11 w-full text-[14px]" onClick={pay} disabled={paying || editing || !me || !items?.length || delivery.pending || delivery.blocked.length > 0}>
+            <Lock weight="fill" className="size-4" /> {paying ? "Opening secure payment" : delivery.total !== null ? `Pay ${gbp(delivery.total)}` : "Continue to payment"}
           </Button>
+          {delivery.total === null && !delivery.pending && <p className="mt-3 text-center text-ui-sm text-app-muted">Stripe shows the final total, including any delivery, before you pay.</p>}
           {editing && <p className="mt-3 text-center text-ui-sm text-app-amber">Save your address before paying.</p>}
           <p className="mt-3 text-center text-ui-sm text-app-faint">You&apos;ll enter your card on Stripe&apos;s secure page. FarmNomad never sees your card details.</p>
         </aside>
